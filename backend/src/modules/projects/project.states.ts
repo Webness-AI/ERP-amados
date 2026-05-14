@@ -1,0 +1,62 @@
+import { AppError } from "../../core/errors/app-error";
+import { PROJECT_STATUSES, type ProjectStatus } from "./project.model";
+
+const transitions: Record<ProjectStatus, ProjectStatus[]> = {
+  [PROJECT_STATUSES.CONSULTA]: [
+    PROJECT_STATUSES.PRESUPUESTADO,
+    PROJECT_STATUSES.CANCELADO,
+  ],
+  [PROJECT_STATUSES.PRESUPUESTADO]: [
+    PROJECT_STATUSES.APROBADO,
+    PROJECT_STATUSES.PAUSADO,
+    PROJECT_STATUSES.CANCELADO,
+  ],
+  [PROJECT_STATUSES.APROBADO]: [
+    PROJECT_STATUSES.COMPRADO,
+    PROJECT_STATUSES.PAUSADO,
+    PROJECT_STATUSES.CANCELADO,
+  ],
+  [PROJECT_STATUSES.COMPRADO]: [
+    PROJECT_STATUSES.PRODUCCION,
+    PROJECT_STATUSES.PAUSADO,
+    PROJECT_STATUSES.CANCELADO,
+  ],
+  [PROJECT_STATUSES.PRODUCCION]: [
+    PROJECT_STATUSES.INSTALACION,
+    PROJECT_STATUSES.PAUSADO,
+    PROJECT_STATUSES.CANCELADO,
+  ],
+  [PROJECT_STATUSES.INSTALACION]: [
+    PROJECT_STATUSES.FINALIZADO,
+    PROJECT_STATUSES.PAUSADO,
+    PROJECT_STATUSES.CANCELADO,
+  ],
+  [PROJECT_STATUSES.PAUSADO]: [
+    PROJECT_STATUSES.PRESUPUESTADO,
+    PROJECT_STATUSES.APROBADO,
+    PROJECT_STATUSES.COMPRADO,
+    PROJECT_STATUSES.PRODUCCION,
+    PROJECT_STATUSES.INSTALACION,
+    PROJECT_STATUSES.CANCELADO,
+  ],
+  [PROJECT_STATUSES.FINALIZADO]: [],
+  [PROJECT_STATUSES.CANCELADO]: [],
+};
+
+export function assertProjectTransitionAllowed(
+  from: ProjectStatus,
+  to: ProjectStatus,
+): void {
+  if (from === to) {
+    return;
+  }
+
+  const allowed = transitions[from] ?? [];
+  if (!allowed.includes(to)) {
+    throw new AppError(
+      `Invalid project status transition from ${from} to ${to}`,
+      409,
+      "INVALID_PROJECT_TRANSITION",
+    );
+  }
+}
