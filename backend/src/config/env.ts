@@ -35,7 +35,9 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
   JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
   BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(8).max(14).default(10),
-  CORS_ORIGIN: z.string().default("http://localhost:5173"),
+  CORS_ORIGIN: z
+    .string()
+    .default("http://localhost:5173,http://localhost:5174"),
   DASHBOARD_ALERTS_SCHEDULER_ENABLED: z
     .string()
     .default("true")
@@ -62,3 +64,7 @@ if (!parsedEnv.success) {
 }
 
 export const env = parsedEnv.data;
+
+export const corsOrigins = env.CORS_ORIGIN.split(",")
+  .map((origin) => origin.trim())
+  .filter((origin) => origin.length > 0);

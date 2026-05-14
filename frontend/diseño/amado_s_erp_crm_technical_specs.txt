@@ -1,0 +1,36 @@
+# Documentación Técnica Actualizada - ERP/CRM Operativo para Amado's
+
+Este documento resume la arquitectura conceptual, contable y operativa del sistema ERP/CRM diseñado para Amado's. El sistema se basa en una arquitectura modular impulsada por eventos, donde todas las operaciones convergen en un núcleo contable centralizado.
+
+## Objetivo General del Sistema
+• Centralizar operación comercial, stock, compras, producción, gastos fijos y contabilidad.
+• Automatizar procesos operativos y financieros.
+• Mantener trazabilidad absoluta de materiales, dinero y movimientos.
+• Permitir crecimiento y escalabilidad sin destruir la arquitectura.
+• Transformar la lógica operativa de Amado's en un sistema digital integrado.
+
+## Stack Tecnológico
+• Frontend: React + TypeScript + SCSS + Vite
+• Backend: Node.js + TypeScript + Express
+• Base de datos: MongoDB
+• Autenticación: JWT + Refresh Tokens
+• Arquitectura: Modular Monolith + Event Driven + DDD parcial
+
+## Concepto Central de la Arquitectura
+• Absolutamente todo lo que sucede en el sistema converge en el Libro Diario.
+• Los módulos operativos generan eventos económicos.
+• El módulo contable interpreta dichos eventos y genera asientos automáticamente.
+• El Costo de Mercadería Vendida (CMV) se registra automáticamente desde movimientos de stock asociados a ventas y proyectos.
+• Libro Mayor, Estado de Resultados, Estado Contable y Balances/Resúmenes son derivados automáticos.
+• El sistema debe funcionar como un ERP financiero-operativo real.
+
+## Roles del Sistema
+• Admin General: gestión total del sistema, usuarios, roles, configuraciones y plan de cuentas.
+• Admin: gestión operativa de clientes, stock, compras, producción, gastos, caja y libro diario.
+• Usuario: acceso únicamente de lectura.
+
+## Módulos Principales
+• Auth, Usuarios y Roles, Clientes, Presupuestos, Proyectos, Stock, Compras, Proveedores, Producción, Gastos Fijos, Caja y Bancos, Contabilidad, Dashboard Gerencial, Configuraciones.
+
+## Flujo Principal Operativo
+• Consulta -> Presupuesto -> Aprobación -> Reserva y asignación de stock -> Detección de faltantes -> Generación de lista de compra -> Compra -> Ingreso de materiales -> Producción -> Instalación -> Venta y cobro -> Registro de CMV -> Generación automática de asiento contable.
