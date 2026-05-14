@@ -4,7 +4,7 @@ import express from "express";
 import helmet from "helmet";
 import morgan from "morgan";
 
-import { env } from "./config/env";
+import { corsOrigins, env } from "./config/env";
 import { errorHandlerMiddleware } from "./core/middleware/error-handler.middleware";
 import { notFoundMiddleware } from "./core/middleware/not-found.middleware";
 import { requestContextMiddleware } from "./core/middleware/request-context.middleware";
@@ -31,7 +31,19 @@ app.disable("x-powered-by");
 app.use(helmet());
 app.use(
   cors({
-    origin: env.CORS_ORIGIN,
+    origin: (origin, callback) => {
+      const isLocalhostDevOrigin =
+        typeof origin === "string" &&
+        env.NODE_ENV !== "production" &&
+        /^http:\/\/localhost:\d+$/.test(origin);
+
+      if (!origin || corsOrigins.includes(origin) || isLocalhostDevOrigin) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Not allowed by CORS: ${origin}`));
+    },
     credentials: true,
   }),
 );
