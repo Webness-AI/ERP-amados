@@ -3,12 +3,20 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import { RequireAuth } from "../auth/RequireAuth";
 import { AppShell } from "../layouts/AppShell";
 import { AccountingPage } from "../pages/AccountingPage";
+import { BudgetsPage } from "../pages/BudgetsPage";
+import { CashBanksPage } from "../pages/CashBanksPage";
+import { ClientsPage } from "../pages/ClientsPage";
+import { CollectionsPage } from "../pages/CollectionsPage";
 import { DashboardPage } from "../pages/DashboardPage";
+import { FixedExpensesPage } from "../pages/FixedExpensesPage";
 import { LoginPage } from "../pages/LoginPage";
 import { NotFoundPage } from "../pages/NotFoundPage";
-import { PlaceholderPage } from "../pages/PlaceholderPage";
+import { PurchasesPage } from "../pages/PurchasesPage";
+import { ProductionPage } from "../pages/ProductionPage";
 import { ProjectsPage } from "../pages/ProjectsPage";
+import { SettingsPage } from "../pages/SettingsPage";
 import { StockPage } from "../pages/StockPage";
+import { SuppliersPage } from "../pages/SuppliersPage";
 
 export const router = createBrowserRouter([
   {
@@ -27,68 +35,38 @@ export const router = createBrowserRouter([
           { path: "projects", element: <ProjectsPage /> },
           { path: "stock", element: <StockPage /> },
           { path: "accounting", element: <AccountingPage /> },
-          {
-            path: "clients",
-            element: (
-              <PlaceholderPage
-                title="Clientes"
-                description="Integracion con /api/v1/clients"
-              />
-            ),
-          },
+          { path: "clients", element: <ClientsPage /> },
           {
             path: "budgets",
-            element: (
-              <PlaceholderPage
-                title="Presupuestos"
-                description="Integracion con /api/v1/budgets"
-              />
-            ),
+            element: <BudgetsPage />,
           },
           {
             path: "purchases",
-            element: (
-              <PlaceholderPage
-                title="Compras"
-                description="Integracion con /api/v1/purchases"
-              />
-            ),
+            element: <PurchasesPage />,
           },
           {
             path: "production",
-            element: (
-              <PlaceholderPage
-                title="Produccion"
-                description="Integracion con /api/v1/production-orders"
-              />
-            ),
+            element: <ProductionPage />,
           },
           {
             path: "cash-banks",
-            element: (
-              <PlaceholderPage
-                title="Caja y Bancos"
-                description="Integracion con /api/v1/cash"
-              />
-            ),
+            element: <CashBanksPage />,
           },
           {
             path: "fixed-expenses",
-            element: (
-              <PlaceholderPage
-                title="Gastos Fijos"
-                description="Integracion con /api/v1/fixed-expenses"
-              />
-            ),
+            element: <FixedExpensesPage />,
+          },
+          {
+            path: "suppliers",
+            element: <SuppliersPage />,
+          },
+          {
+            path: "collections",
+            element: <CollectionsPage />,
           },
           {
             path: "settings",
-            element: (
-              <PlaceholderPage
-                title="Configuraciones"
-                description="Modulo pendiente segun roadmap"
-              />
-            ),
+            element: <SettingsPage />,
           },
           { path: "*", element: <NotFoundPage /> },
         ],
