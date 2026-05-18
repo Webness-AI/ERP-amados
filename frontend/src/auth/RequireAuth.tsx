@@ -10,7 +10,7 @@ export function RequireAuth() {
     return (
       <main className="auth-page">
         <article className="auth-card">
-          <h1>Cargando sesion</h1>
+          <h1>Cargando sesión</h1>
           <p>Validando credenciales con el backend...</p>
         </article>
       </main>

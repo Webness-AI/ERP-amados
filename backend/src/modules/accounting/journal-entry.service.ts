@@ -38,6 +38,7 @@ type JournalEntryInternalInput = {
   isReversal?: boolean;
   reversalOfEntryId?: string | null;
   actorId: string;
+  isManualEntry?: boolean;
 };
 
 type TrialBalanceRow = {
@@ -138,13 +139,50 @@ async function resolveAccountNamesByCode(
   return map;
 }
 
+async function validateAndResolveAccountNames(
+  codes: string[],
+): Promise<Map<string, string>> {
+  const normalized = [
+    ...new Set(codes.map((code) => code.trim().toUpperCase())),
+  ];
+
+  const accounts = await AccountModel.find({
+    code: { $in: normalized },
+    deletedAt: null,
+    isActive: true,
+  })
+    .select("code name")
+    .lean();
+
+  const map = new Map<string, string>();
+  for (const account of accounts) {
+    map.set(account.code, account.name);
+  }
+
+  // Strict validation: check that all provided codes exist and are active
+  const missingCodes = normalized.filter((code) => !map.has(code));
+  if (missingCodes.length > 0) {
+    throw new AppError(
+      `Account codes not found or inactive: ${missingCodes.join(", ")}`,
+      400,
+      "INVALID_ACCOUNT_CODES",
+    );
+  }
+
+  return map;
+}
+
 async function createJournalEntryInternal(
   input: JournalEntryInternalInput,
 ): Promise<JournalEntry> {
   validateBalancedLines(input.lines);
 
   const accountCodes = input.lines.map((line) => line.accountCode);
-  const accountNames = await resolveAccountNamesByCode(accountCodes);
+
+  // Use strict validation for manual entries, permissive for auto-generated
+  const accountNames = input.isManualEntry
+    ? await validateAndResolveAccountNames(accountCodes)
+    : await resolveAccountNamesByCode(accountCodes);
 
   const lines: JournalEntryLine[] = input.lines.map((line) => {
     const accountCode = line.accountCode.trim().toUpperCase();
@@ -207,6 +245,7 @@ export async function createManualJournalEntry(
     originEntityId: input.originEntityId ?? null,
     correlationId: input.correlationId ?? null,
     actorId: actor.id,
+    isManualEntry: true,
   });
 }
 
