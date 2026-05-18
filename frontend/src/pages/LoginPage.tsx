@@ -9,7 +9,7 @@ type AuthMode = "login" | "bootstrap";
 
 function extractErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error) && !error.response) {
-    return "No se pudo conectar con el backend. Verifica que el servidor este levantado en http://localhost:3000.";
+    return "No se pudo conectar con el backend. Verifica que el servidor esté levantado en http://localhost:3000.";
   }
 
   if (typeof error === "object" && error !== null) {
@@ -24,11 +24,11 @@ function extractErrorMessage(error: unknown): string {
     };
     return (
       maybeResponse.response?.data?.error?.message ??
-      "No se pudo completar la operacion"
+      "No se pudo completar la operación"
     );
   }
 
-  return "No se pudo completar la operacion";
+  return "No se pudo completar la operación";
 }
 
 export function LoginPage() {
@@ -82,7 +82,7 @@ export function LoginPage() {
         <h1>{mode === "login" ? "Ingresar al ERP" : "Crear admin inicial"}</h1>
         <p>
           {mode === "login"
-            ? "Autenticate para acceder a modulos protegidos."
+            ? "Autentícate para acceder a módulos protegidos."
             : "Usa bootstrap solo para la primera cuenta del sistema."}
         </p>
 
@@ -162,7 +162,7 @@ export function LoginPage() {
         </form>
 
         <small>
-          Si ya existe un usuario, bootstrap devolvera conflicto. Volve a{" "}
+          Si ya existe un usuario, bootstrap devolverá conflicto. Volvé a{" "}
           <Link to="/login">login</Link>.
         </small>
       </article>
