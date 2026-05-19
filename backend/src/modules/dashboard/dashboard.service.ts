@@ -1,4 +1,7 @@
-import { getIncomeStatementReport } from "../accounting/journal-entry.service";
+import {
+  getGeneralLedgerReport,
+  getIncomeStatementReport,
+} from "../accounting/journal-entry.service";
 import { JournalEntryModel } from "../accounting/journal-entry.model";
 import { BUDGET_STATUSES, BudgetModel } from "../budgets/budget.model";
 import {
@@ -100,7 +103,7 @@ export async function getDashboardOverview(
   };
   sales: {
     approvedBudgets: number;
-    approvedAmount: number;
+    accumulatedAmount: number;
   };
   collections: {
     pendingAmount: number;
@@ -122,6 +125,7 @@ export async function getDashboardOverview(
     lowStockMaterials: number;
     purchaseSuggestions: number;
     estimatedPurchaseCost: number;
+    currentCmv: number;
   };
   production: {
     openOrders: number;
@@ -155,6 +159,8 @@ export async function getDashboardOverview(
     productionStatusRows,
     highPriorityOpenOrders,
     purchaseSuggestions,
+    ventasLedger,
+    cmvLedger,
     incomeStatement,
     journalEntriesInPeriod,
   ] = await Promise.all([
@@ -340,6 +346,8 @@ export async function getDashboardOverview(
       priority: "HIGH",
     }),
     listPurchaseSuggestions({}),
+    getGeneralLedgerReport({ accountCode: "VENTAS" }),
+    getGeneralLedgerReport({ accountCode: "CMV" }),
     getIncomeStatementReport({
       from: range.from.toISOString(),
       to: range.to.toISOString(),
@@ -373,6 +381,10 @@ export async function getDashboardOverview(
     0;
 
   const receivedPurchasesAmount = purchasesReceivedRows[0]?.amount ?? 0;
+  const salesAccumulatedAmount = normalizeMoney(
+    Math.abs(ventasLedger.totals.endingBalance),
+  );
+  const currentCmv = normalizeMoney(Math.abs(cmvLedger.totals.endingBalance));
 
   const productionByStatus = productionStatusRows
     .map((row) => ({
@@ -408,7 +420,7 @@ export async function getDashboardOverview(
     },
     sales: {
       approvedBudgets: approvedBudget.count,
-      approvedAmount: normalizeMoney(approvedBudget.amount),
+      accumulatedAmount: salesAccumulatedAmount,
     },
     collections: {
       pendingAmount: normalizeMoney(pendingCollectionsAmount),
@@ -432,6 +444,7 @@ export async function getDashboardOverview(
       estimatedPurchaseCost: normalizeMoney(
         purchaseSuggestions.totals.estimatedTotalCost,
       ),
+      currentCmv,
     },
     production: {
       openOrders,

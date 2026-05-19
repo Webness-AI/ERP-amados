@@ -10,7 +10,12 @@ import type {
   ListAccountsInput,
   UpdateAccountInput,
 } from "./account.schemas";
-import { AccountModel, type AccountType } from "./account.model";
+import {
+  ACCOUNT_NATURES,
+  AccountModel,
+  type AccountNature,
+  type ResultClassification,
+} from "./account.model";
 
 type Actor = {
   id: string;
@@ -20,7 +25,8 @@ type PublicAccount = {
   id: string;
   code: string;
   name: string;
-  type: AccountType;
+  naturaleza: AccountNature;
+  resultClassification: ResultClassification | null;
   parentAccountId: string | null;
   isActive: boolean;
   createdAt: Date;
@@ -31,7 +37,8 @@ function toPublicAccount(value: {
   _id: unknown;
   code: string;
   name: string;
-  type: AccountType;
+  naturaleza: AccountNature;
+  resultClassification?: ResultClassification | null;
   parentAccountId?: unknown;
   isActive: boolean;
   createdAt: Date;
@@ -41,7 +48,8 @@ function toPublicAccount(value: {
     id: String(value._id),
     code: value.code,
     name: value.name,
-    type: value.type,
+    naturaleza: value.naturaleza,
+    resultClassification: value.resultClassification ?? null,
     parentAccountId: value.parentAccountId
       ? String(value.parentAccountId)
       : null,
@@ -101,6 +109,17 @@ async function ensureAccountExists(id: string): Promise<void> {
   }
 }
 
+function normalizeResultClassification(
+  naturaleza: AccountNature,
+  resultClassification?: ResultClassification | null,
+): ResultClassification | null {
+  if (naturaleza !== ACCOUNT_NATURES.RESULTADO) {
+    return null;
+  }
+
+  return resultClassification ?? null;
+}
+
 export async function createAccount(
   input: CreateAccountInput,
   actor: Actor,
@@ -114,7 +133,11 @@ export async function createAccount(
   const account = new AccountModel({
     code: input.code.toUpperCase(),
     name: input.name,
-    type: input.type,
+    naturaleza: input.naturaleza,
+    resultClassification: normalizeResultClassification(
+      input.naturaleza,
+      input.resultClassification,
+    ),
     parentAccountId: input.parentAccountId ?? null,
     isActive: input.isActive ?? true,
     createdBy: actor.id,
@@ -138,8 +161,12 @@ export async function listAccounts(query: ListAccountsInput): Promise<{
   const { page, limit, skip } = parsePaginationInput(query);
   const filter: Record<string, unknown> = { deletedAt: null };
 
-  if (query.type) {
-    filter.type = query.type;
+  if (query.naturaleza) {
+    filter.naturaleza = query.naturaleza;
+  }
+
+  if (query.resultClassification) {
+    filter.resultClassification = query.resultClassification;
   }
 
   if (query.activeOnly !== "false") {
@@ -160,7 +187,9 @@ export async function listAccounts(query: ListAccountsInput): Promise<{
       .sort({ code: 1 })
       .skip(skip)
       .limit(limit)
-      .select("code name type parentAccountId isActive createdAt updatedAt")
+      .select(
+        "code name naturaleza resultClassification parentAccountId isActive createdAt updatedAt",
+      )
       .lean(),
     AccountModel.countDocuments(filter),
   ]);
@@ -178,7 +207,9 @@ export async function getAccountById(id: string): Promise<PublicAccount> {
     _id: id,
     deletedAt: null,
   })
-    .select("code name type parentAccountId isActive createdAt updatedAt")
+    .select(
+      "code name naturaleza resultClassification parentAccountId isActive createdAt updatedAt",
+    )
     .lean();
 
   if (!account) {
@@ -222,8 +253,19 @@ export async function updateAccount(
     updatePayload.name = input.name;
   }
 
-  if (input.type !== undefined) {
-    updatePayload.type = input.type;
+  if (input.naturaleza !== undefined) {
+    updatePayload.naturaleza = input.naturaleza;
+  }
+
+  if (input.resultClassification !== undefined) {
+    updatePayload.resultClassification = input.resultClassification;
+  }
+
+  if (
+    input.naturaleza !== undefined &&
+    input.naturaleza !== ACCOUNT_NATURES.RESULTADO
+  ) {
+    updatePayload.resultClassification = null;
   }
 
   if (input.parentAccountId !== undefined) {
@@ -242,7 +284,8 @@ export async function updateAccount(
       projection: {
         code: 1,
         name: 1,
-        type: 1,
+        naturaleza: 1,
+        resultClassification: 1,
         parentAccountId: 1,
         isActive: 1,
         createdAt: 1,

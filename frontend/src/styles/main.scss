@@ -1642,6 +1642,33 @@ p {
   }
 }
 
+.password-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  input {
+    flex: 1;
+    padding-right: 40px !important;
+  }
+
+  .password-toggle {
+    position: absolute;
+    right: 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    color: var(--on-surface-variant);
+
+    &:hover {
+      color: var(--on-surface);
+    }
+  }
+}
+
 .form-error {
   color: var(--negative);
   margin: 0;

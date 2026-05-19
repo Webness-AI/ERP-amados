@@ -131,23 +131,39 @@ function ShellIcon({ name }: { name: ShellIconName }) {
 }
 
 const navItems = [
-  { to: "/dashboard", label: "Dashboard", icon: "dashboard" },
-  { to: "/clients", label: "Clients", icon: "clients" },
-  { to: "/budgets", label: "Budgets", icon: "budgets" },
-  { to: "/projects", label: "Projects", icon: "projects" },
+  { to: "/dashboard", label: "Tablero", icon: "dashboard" },
+  { to: "/clients", label: "Clientes", icon: "clients" },
+  { to: "/budgets", label: "Presupuestos", icon: "budgets" },
+  { to: "/projects", label: "Proyectos", icon: "projects" },
   { to: "/stock", label: "Stock", icon: "stock" },
-  { to: "/purchases", label: "Purchases", icon: "purchases" },
-  { to: "/production", label: "Production", icon: "production" },
+  { to: "/purchases", label: "Compras", icon: "purchases" },
+  { to: "/production", label: "Produccion", icon: "production" },
   {
     to: "/fixed-expenses",
-    label: "Fixed Expenses",
+    label: "Gastos Fijos",
     icon: "fixed-expenses",
   },
-  { to: "/cash-banks", label: "Cash & Banks", icon: "cash-banks" },
-  { to: "/accounting", label: "Accounting", icon: "accounting" },
-  { to: "/suppliers", label: "Suppliers", icon: "suppliers" },
-  { to: "/collections", label: "Collections", icon: "collections" },
-  { to: "/settings", label: "Settings", icon: "settings" },
+  { to: "/cash-banks", label: "Caja y Bancos", icon: "cash-banks" },
+  { to: "/accounting/diario", label: "Libro Diario", icon: "accounting" },
+  {
+    to: "/accounting/libro-mayor",
+    label: "Libro Mayor",
+    icon: "accounting",
+  },
+  {
+    to: "/accounting/estado-resultado",
+    label: "Estado de Resultado",
+    icon: "accounting",
+  },
+  {
+    to: "/accounting/estado-contable",
+    label: "Estado Contable",
+    icon: "accounting",
+  },
+  { to: "/accounting/balances", label: "Balances", icon: "accounting" },
+  { to: "/suppliers", label: "Proveedores", icon: "suppliers" },
+  { to: "/collections", label: "Cobranzas", icon: "collections" },
+  { to: "/settings", label: "Configuracion", icon: "settings" },
 ] as const;
 
 export function AppShell() {
@@ -156,15 +172,15 @@ export function AppShell() {
 
   const userName = user
     ? `${user.firstName} ${user.lastName}`.trim()
-    : "Admin User";
-  const userRole = user ? user.role.replaceAll("_", " ") : "SUPER ADMIN";
+    : "Usuario Admin";
+  const userRole = user ? user.role.replaceAll("_", " ") : "ADMIN GENERAL";
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar__brand">
           <h1>Amado's</h1>
-          <p>MANAGEMENT SYSTEM</p>
+          <p>SISTEMA DE GESTION</p>
         </div>
         <nav className="sidebar__nav" aria-label="Principal">
           {navItems.map((item) => (
@@ -192,7 +208,7 @@ export function AppShell() {
             <span className="app-icon" aria-hidden="true">
               <ShellIcon name="quote" />
             </span>
-            <span>New Quote</span>
+            <span>Nuevo Presupuesto</span>
           </button>
 
           <div className="sidebar__user-card">
@@ -224,7 +240,7 @@ export function AppShell() {
               className="btn btn-primary topbar__cta"
               onClick={() => navigate("/projects")}
             >
-              Create Project
+              Crear proyecto
             </button>
             <button type="button" className="btn btn-icon" aria-label="Notificaciones">
               <ShellIcon name="bell" />

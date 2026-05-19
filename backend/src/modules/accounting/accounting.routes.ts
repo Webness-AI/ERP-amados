@@ -7,6 +7,8 @@ import { ROLES } from "../auth/roles";
 import {
   createManualJournalEntry,
   getBalanceSheetReport,
+  getFinancialStatementReport,
+  getGeneralLedgerReport,
   getIncomeStatementReport,
   getJournalEntryById,
   getTrialBalanceReport,
@@ -15,6 +17,7 @@ import {
 } from "./journal-entry.service";
 import {
   createJournalEntrySchema,
+  generalLedgerQuerySchema,
   listJournalEntriesSchema,
   reportRangeSchema,
   reverseJournalEntrySchema,
@@ -127,6 +130,23 @@ accountingRouter.get(
 );
 
 accountingRouter.get(
+  "/reports/general-ledger",
+  authMiddleware,
+  authorizeMiddleware(READ_ROLES),
+  (req, res, next) => {
+    (async () => {
+      const query = generalLedgerQuerySchema.parse(req.query);
+      const report = await getGeneralLedgerReport(query);
+
+      res.status(200).json({
+        ok: true,
+        data: report,
+      });
+    })().catch(next);
+  },
+);
+
+accountingRouter.get(
   "/reports/income-statement",
   authMiddleware,
   authorizeMiddleware(READ_ROLES),
@@ -134,6 +154,23 @@ accountingRouter.get(
     (async () => {
       const query = reportRangeSchema.parse(req.query);
       const report = await getIncomeStatementReport(query);
+
+      res.status(200).json({
+        ok: true,
+        data: report,
+      });
+    })().catch(next);
+  },
+);
+
+accountingRouter.get(
+  "/reports/financial-statement",
+  authMiddleware,
+  authorizeMiddleware(READ_ROLES),
+  (req, res, next) => {
+    (async () => {
+      const query = reportRangeSchema.parse(req.query);
+      const report = await getFinancialStatementReport(query);
 
       res.status(200).json({
         ok: true,

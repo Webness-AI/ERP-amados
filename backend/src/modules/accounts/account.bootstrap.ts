@@ -1,47 +1,140 @@
-import { ACCOUNT_TYPES, AccountModel } from "./account.model";
+import {
+  ACCOUNT_NATURES,
+  RESULT_CLASSIFICATIONS,
+  AccountModel,
+} from "./account.model";
 
 type DefaultAccountSeed = {
   code: string;
   name: string;
-  type: (typeof ACCOUNT_TYPES)[keyof typeof ACCOUNT_TYPES];
+  naturaleza: (typeof ACCOUNT_NATURES)[keyof typeof ACCOUNT_NATURES];
+  resultClassification?:
+    | (typeof RESULT_CLASSIFICATIONS)[keyof typeof RESULT_CLASSIFICATIONS]
+    | null;
 };
 
 const DEFAULT_ACCOUNTS: DefaultAccountSeed[] = [
-  { code: "CAJA", name: "Caja", type: ACCOUNT_TYPES.ASSET },
-  { code: "BANCO", name: "Banco", type: ACCOUNT_TYPES.ASSET },
+  { code: "CAJA", name: "Caja", naturaleza: ACCOUNT_NATURES.ACTIVO },
+  { code: "BANCO", name: "Banco", naturaleza: ACCOUNT_NATURES.ACTIVO },
   {
     code: "ANTICIPOS_CLIENTES",
     name: "Anticipos de clientes",
-    type: ACCOUNT_TYPES.LIABILITY,
+    naturaleza: ACCOUNT_NATURES.PASIVO,
   },
-  { code: "VENTAS", name: "Ventas", type: ACCOUNT_TYPES.INCOME },
-  { code: "STOCK", name: "Stock", type: ACCOUNT_TYPES.ASSET },
+  {
+    code: "VENTAS",
+    name: "Ventas",
+    naturaleza: ACCOUNT_NATURES.RESULTADO,
+    resultClassification: RESULT_CLASSIFICATIONS.GENERAL,
+  },
+  { code: "STOCK", name: "Stock", naturaleza: ACCOUNT_NATURES.ACTIVO },
   {
     code: "PROVEEDORES",
     name: "Proveedores",
-    type: ACCOUNT_TYPES.LIABILITY,
+    naturaleza: ACCOUNT_NATURES.PASIVO,
   },
   {
     code: "CMV",
     name: "Costo de mercaderia vendida",
-    type: ACCOUNT_TYPES.EXPENSE,
+    naturaleza: ACCOUNT_NATURES.RESULTADO,
+    resultClassification: RESULT_CLASSIFICATIONS.GASTOS_PRODUCCION,
   },
   {
     code: "GASTOS_FIJOS",
     name: "Gastos fijos",
-    type: ACCOUNT_TYPES.EXPENSE,
+    naturaleza: ACCOUNT_NATURES.RESULTADO,
+    resultClassification: RESULT_CLASSIFICATIONS.GASTOS_ADMIN_COMERCIAL,
   },
   {
     code: "MANO_OBRA_PENDIENTE",
     name: "Mano de obra pendiente",
-    type: ACCOUNT_TYPES.LIABILITY,
+    naturaleza: ACCOUNT_NATURES.PASIVO,
   },
   {
     code: "PUBLICIDAD",
     name: "Publicidad",
-    type: ACCOUNT_TYPES.EXPENSE,
+    naturaleza: ACCOUNT_NATURES.RESULTADO,
+    resultClassification: RESULT_CLASSIFICATIONS.GASTOS_ADMIN_COMERCIAL,
   },
 ];
+
+function mapLegacyNature(value?: string | null):
+  | (typeof ACCOUNT_NATURES)[keyof typeof ACCOUNT_NATURES]
+  | null {
+  switch (value) {
+    case "ASSET":
+      return ACCOUNT_NATURES.ACTIVO;
+    case "LIABILITY":
+      return ACCOUNT_NATURES.PASIVO;
+    case "EQUITY":
+      return ACCOUNT_NATURES.PATRIMONIO_NETO;
+    case "INCOME":
+    case "EXPENSE":
+      return ACCOUNT_NATURES.RESULTADO;
+    default:
+      return null;
+  }
+}
+
+export async function migrateLegacyAccountTaxonomy(): Promise<{
+  migrated: number;
+  classifiedAsGeneral: number;
+}> {
+  const legacyAccounts = await AccountModel.collection
+    .find(
+      {
+        $or: [
+          { naturaleza: { $exists: false } },
+          { naturaleza: null },
+          { naturaleza: "" },
+        ],
+      },
+      { projection: { type: 1, naturaleza: 1, resultClassification: 1 } },
+    )
+    .toArray();
+
+  type BulkWriteOperation = Parameters<
+    typeof AccountModel.collection.bulkWrite
+  >[0][number];
+  const bulkOps: BulkWriteOperation[] = [];
+  let classifiedAsGeneral = 0;
+
+  for (const account of legacyAccounts) {
+    const naturaleza = mapLegacyNature(account.type as string | null);
+
+    if (!naturaleza) {
+      continue;
+    }
+
+    const update: Record<string, unknown> = {
+      naturaleza,
+    };
+
+    if (naturaleza === ACCOUNT_NATURES.RESULTADO) {
+      update.resultClassification =
+        account.resultClassification ?? RESULT_CLASSIFICATIONS.GENERAL;
+      if (!account.resultClassification) {
+        classifiedAsGeneral += 1;
+      }
+    }
+
+    bulkOps.push({
+      updateOne: {
+        filter: { _id: account._id },
+        update: { $set: update },
+      },
+    });
+  }
+
+  if (bulkOps.length > 0) {
+    await AccountModel.collection.bulkWrite(bulkOps, { ordered: false });
+  }
+
+  return {
+    migrated: bulkOps.length,
+    classifiedAsGeneral,
+  };
+}
 
 export async function ensureDefaultChartOfAccounts(): Promise<{
   created: number;
@@ -63,7 +156,8 @@ export async function ensureDefaultChartOfAccounts(): Promise<{
     await AccountModel.create({
       code: account.code,
       name: account.name,
-      type: account.type,
+      naturaleza: account.naturaleza,
+      resultClassification: account.resultClassification ?? null,
       parentAccountId: null,
       isActive: true,
       createdBy: "system",

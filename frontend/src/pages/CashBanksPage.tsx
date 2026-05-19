@@ -296,7 +296,7 @@ export function CashBanksPage() {
         <article className="kpi-card">
           <h3>Saldo en banco</h3>
           <strong>{formatMoney(metrics.bank)}</strong>
-          <small>Movimientos source BANK</small>
+          <small>Movimientos con origen Banco</small>
         </article>
       </div>
 
@@ -567,7 +567,7 @@ export function CashBanksPage() {
 
             <div className="budget-form__row">
               <label>
-                <span>Client ID</span>
+                <span>ID cliente</span>
                 <input
                   type="text"
                   value={formState.clientId}
@@ -580,7 +580,7 @@ export function CashBanksPage() {
                 />
               </label>
               <label>
-                <span>Project ID</span>
+                <span>ID proyecto</span>
                 <input
                   type="text"
                   value={formState.projectId}
@@ -596,7 +596,7 @@ export function CashBanksPage() {
 
             <div className="budget-form__row">
               <label>
-                <span>Reference Type</span>
+                <span>Tipo de referencia</span>
                 <input
                   type="text"
                   value={formState.referenceType}
@@ -609,7 +609,7 @@ export function CashBanksPage() {
                 />
               </label>
               <label>
-                <span>Reference ID</span>
+                <span>ID de referencia</span>
                 <input
                   type="text"
                   value={formState.referenceId}

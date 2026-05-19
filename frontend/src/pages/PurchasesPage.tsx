@@ -252,7 +252,7 @@ export function PurchasesPage() {
     };
 
     if (!payload.supplierId) {
-      setFormError("Supplier ID es obligatorio");
+      setFormError("El ID del proveedor es obligatorio");
       setIsSaving(false);
       return;
     }
@@ -611,7 +611,7 @@ export function PurchasesPage() {
               onSubmit={(event) => void handleCreate(event)}
             >
               <label>
-                <span>Supplier ID *</span>
+                <span>ID proveedor *</span>
                 <input
                   type="text"
                   value={formState.supplierId}
@@ -625,7 +625,7 @@ export function PurchasesPage() {
                 />
               </label>
               <label>
-                <span>Project ID</span>
+                <span>ID proyecto</span>
                 <input
                   type="text"
                   value={formState.projectId}

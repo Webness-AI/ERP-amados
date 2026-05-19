@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   getDashboardAlertsApi,
@@ -29,6 +30,7 @@ export function DashboardPage() {
   const [alerts, setAlerts] = useState<DashboardAlerts | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let active = true;
@@ -49,11 +51,12 @@ export function DashboardPage() {
 
         setOverview(overviewData);
         setAlerts(alertsData);
-      } catch {
+      } catch (caughtError) {
         if (!active) {
           return;
         }
 
+        console.error("Dashboard load failed", caughtError);
         setError("No se pudo cargar el dashboard");
       } finally {
         if (active) {
@@ -81,19 +84,37 @@ export function DashboardPage() {
     );
   }
 
-  const areaRows = overview.projects.byStatus.slice(0, 4);
+  const productionRows = overview.production.byStatus.slice(0, 4);
   const alertsList = [
     ...alerts.projects.deliveryDueSoon.map(
-      (item) => `${item.name} entrega ${formatDate(item.deliveryDate)}`,
+      (item) => `Proyecto ${item.name} entrega ${formatDate(item.deliveryDate)}`,
+    ),
+    ...alerts.projects.deliveryOverdue.map(
+      (item) => `Atrasado: ${item.name} venció ${formatDate(item.deliveryDate)}`,
     ),
     ...alerts.collections.dueSoon.map(
       (item) =>
         `Cobranza ${item.id.slice(-6)} vence ${formatDate(item.dueDate)}`,
     ),
+    ...alerts.collections.overdue.map(
+      (item) =>
+        `Cobranza ${item.id.slice(-6)} vencida ${formatDate(item.dueDate)}`,
+    ),
     ...alerts.fixedExpenses.dueSoon.map(
       (item) => `${item.name} vence ${formatDate(item.nextDueDate)}`,
     ),
+    ...alerts.fixedExpenses.overdue.map(
+      (item) => `${item.name} vencido ${formatDate(item.nextDueDate)}`,
+    ),
   ].slice(0, 4);
+
+  const quickActions = [
+    { title: "Nuevo proyecto", subtitle: "Ir a proyectos", to: "/projects" },
+    { title: "Ver cobranzas", subtitle: "Abrir cuentas por cobrar", to: "/collections" },
+    { title: "Revisar stock", subtitle: "Abrir inventario", to: "/stock" },
+    { title: "Registrar compra", subtitle: "Abrir compras", to: "/purchases" },
+    { title: "Ir a contabilidad", subtitle: "Abrir libro diario", to: "/accounting/diario" },
+  ];
 
   return (
     <section className="page-content">
@@ -103,38 +124,40 @@ export function DashboardPage() {
         <div>
           <h2>Dashboard Ejecutivo</h2>
           <p>
-            Bienvenido de nuevo. Aquí tienes un resumen de la producción y
-            finanzas de hoy.
+            Resumen operativo y financiero conectado con todos los módulos.
           </p>
         </div>
       </header>
 
-      {/* KPI Cards Row 1 */}
       <div className="kpi-grid">
         <article className="kpi-card kpi-card--metric">
           <span className="kpi-card__icon" aria-hidden="true">
             ↗
           </span>
-          <small className="kpi-positive">+12.6% ↑</small>
-          <h3>Ventas mensuales</h3>
-          <strong>{formatMoney(overview.cash.income)}</strong>
+          <small className="kpi-positive">Mayor contable</small>
+          <h3>Ventas acumuladas</h3>
+          <strong>{formatMoney(overview.sales.accumulatedAmount)}</strong>
+          <small>{overview.sales.approvedBudgets} presupuestos aprobados</small>
         </article>
         <article className="kpi-card kpi-card--metric">
           <span className="kpi-card__icon" aria-hidden="true">
             ▣
           </span>
           <h3>Cobranzas pendientes</h3>
-          <strong>{formatMoney(overview.cash.expense)}</strong>
-          <small className="kpi-neutral">Vencido 35% del total</small>
+          <strong>{formatMoney(overview.collections.pendingAmount)}</strong>
+          <small className="kpi-neutral">
+            Vencidas: {overview.collections.overdueCount} | Próximas: {overview.collections.dueSoonCount}
+          </small>
         </article>
         <article className="kpi-card kpi-card--metric">
           <span className="kpi-card__icon" aria-hidden="true">
             ◇
           </span>
-          <small className="kpi-positive">8 nuevos</small>
           <h3>Proyectos activos</h3>
           <strong>{overview.projects.totalActive}</strong>
-          <small className="kpi-neutral">Módulos en producción</small>
+          <small className="kpi-neutral">
+            Entrega próxima: {overview.projects.deliveryDueSoon} | Atrasados: {overview.projects.deliveryOverdue}
+          </small>
         </article>
         <article className="kpi-card kpi-card--metric kpi-card--critical">
           <span className="kpi-card__icon" aria-hidden="true">
@@ -143,47 +166,71 @@ export function DashboardPage() {
           <small className="kpi-negative">Crítico</small>
           <h3>Alertas de stock</h3>
           <strong>{overview.stock.lowStockMaterials} SKU</strong>
-          <small className="kpi-neutral">Principalmente herrajes</small>
+          <small className="kpi-neutral">
+            CMV contable: {formatMoney(overview.stock.currentCmv)} | Sugerencias de compra: {overview.stock.purchaseSuggestions}
+          </small>
         </article>
       </div>
 
       <div className="dashboard-main-grid">
         <div className="dashboard-main-column">
           <article className="panel panel-large">
-            <h3>Flujo de Caja vs Gastos Fijos</h3>
+            <h3>Resumen contable</h3>
             <p className="panel-subtitle">
-              Comparativa semestral de rendimiento operativo
+              Ingresos, egresos y resultado del período.
             </p>
-            <div className="chart-placeholder">Gráfico de barras: Ingresos vs Gastos</div>
+            <div className="kpi-grid">
+              <article className="kpi-card">
+                <h3>Ingresos contables</h3>
+                <strong>{formatMoney(overview.accounting.income)}</strong>
+              </article>
+              <article className="kpi-card">
+                <h3>Egresos contables</h3>
+                <strong>{formatMoney(overview.accounting.expenses)}</strong>
+              </article>
+              <article className="kpi-card">
+                <h3>Resultado neto</h3>
+                <strong>{formatMoney(overview.accounting.netResult)}</strong>
+              </article>
+              <article className="kpi-card">
+                <h3>Asientos del período</h3>
+                <strong>{overview.accounting.journalEntriesInPeriod}</strong>
+              </article>
+            </div>
           </article>
 
           <article className="panel panel-large">
             <div className="dashboard-section-header">
-              <h3>Producción en Curso</h3>
-              <button type="button" className="btn btn-tertiary">
+              <h3>Producción por estado</h3>
+              <button
+                type="button"
+                className="btn btn-tertiary"
+                onClick={() => navigate("/production")}
+              >
                 Ver todos
               </button>
             </div>
             <table className="table-compact">
               <thead>
                 <tr>
-                  <th>Cliente</th>
-                  <th>Proyecto</th>
                   <th>Estado</th>
-                  <th>Monto</th>
+                  <th>Cantidad</th>
                 </tr>
               </thead>
               <tbody>
-                {areaRows.slice(0, 3).map((row) => (
+                {productionRows.length === 0 && (
+                  <tr>
+                    <td colSpan={2}>No hay órdenes registradas</td>
+                  </tr>
+                )}
+                {productionRows.map((row) => (
                   <tr key={row.status}>
-                    <td>Cliente demo</td>
-                    <td>Proyecto ejemplo</td>
                     <td>
                       <span className={`chip chip-${row.status.toLowerCase()}`}>
                         {row.status}
                       </span>
                     </td>
-                    <td className="td-numeric">{formatMoney(row.count * 10000)}</td>
+                    <td className="td-numeric">{row.count}</td>
                   </tr>
                 ))}
               </tbody>
@@ -195,26 +242,34 @@ export function DashboardPage() {
           <article className="panel quick-actions-panel">
             <h3>Acciones Rápidas</h3>
             <div className="quick-actions quick-actions--stacked">
-              <button className="quick-action-item" type="button">
-                <strong>Nuevo Proyecto</strong>
-                <small>Cargar diseño y materiales</small>
-              </button>
-              <button className="quick-action-item" type="button">
-                <strong>Nueva Venta</strong>
-                <small>Generar orden de pago</small>
-              </button>
-              <button className="quick-action-item" type="button">
-                <strong>Agregar Stock</strong>
-                <small>Registrar entrada de insumos</small>
-              </button>
+              {quickActions.map((action) => (
+                <button
+                  key={action.to}
+                  className="quick-action-item"
+                  type="button"
+                  onClick={() => navigate(action.to)}
+                >
+                  <strong>{action.title}</strong>
+                  <small>{action.subtitle}</small>
+                </button>
+              ))}
             </div>
           </article>
 
           <article className="panel">
-            <h3>Actividad Reciente</h3>
+            <div className="dashboard-section-header">
+              <h3>Actividad Reciente</h3>
+              <button
+                type="button"
+                className="btn btn-tertiary"
+                onClick={() => navigate("/collections")}
+              >
+                Ver cobranzas
+              </button>
+            </div>
             <ul className="activity-list">
               {alertsList.length === 0 && (
-                <li className="activity-item">Sin actividad reciente</li>
+                <li className="activity-item">Sin alertas próximas</li>
               )}
               {alertsList.slice(0, 4).map((item) => (
                 <li key={item} className="activity-item">
@@ -229,10 +284,10 @@ export function DashboardPage() {
 
       <footer className="dashboard-footer">
         <strong>Amado's Amoblamientos</strong>
-        <span>© 2024 Crafted for Meticulous Production.</span>
-        <span>Support</span>
-        <span>Privacy Policy</span>
-        <span className="kpi-positive">System Status</span>
+        <span>© 2024 Desarrollado para una produccion meticulosa.</span>
+        <button type="button" className="btn btn-link" onClick={() => navigate("/dashboard")}>Tablero</button>
+        <button type="button" className="btn btn-link" onClick={() => navigate("/accounting/diario")}>Contabilidad</button>
+        <span className="kpi-positive">Estado del sistema</span>
       </footer>
     </section>
   );

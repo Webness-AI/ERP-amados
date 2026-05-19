@@ -221,3 +221,10 @@ En backend/package.json:
 - Implementar suite de tests automatizados
 - Publicar documentación OpenAPI
 - Añadir runbook operativo de despliegue y recuperación
+
+## Deploy en Render (backend)
+
+1. Crear el servicio en Render usando el archivo render.yaml del repositorio.
+2. Configurar los secretos requeridos: MONGO_URI, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, CORS_ORIGIN.
+3. Lanzar el deploy (autoDeploy habilitado para próximos cambios).
+4. Verificar salud en GET /api/v1/health.
