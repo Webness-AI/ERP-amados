@@ -27,17 +27,27 @@ import { userRouter } from "./modules/users/user.routes";
 
 export const app = express();
 
+function normalizeOrigin(origin: string): string {
+  return origin.replace(/\/+$/, "");
+}
+
 app.disable("x-powered-by");
 app.use(helmet());
 app.use(
   cors({
     origin: (origin, callback) => {
+      const normalizedOrigin =
+        typeof origin === "string" ? normalizeOrigin(origin) : undefined;
       const isLocalhostDevOrigin =
-        typeof origin === "string" &&
+        typeof normalizedOrigin === "string" &&
         env.NODE_ENV !== "production" &&
-        /^http:\/\/localhost:\d+$/.test(origin);
+        /^http:\/\/localhost:\d+$/.test(normalizedOrigin);
 
-      if (!origin || corsOrigins.includes(origin) || isLocalhostDevOrigin) {
+      if (
+        !origin ||
+        (normalizedOrigin && corsOrigins.includes(normalizedOrigin)) ||
+        isLocalhostDevOrigin
+      ) {
         callback(null, true);
         return;
       }
