@@ -1,6 +1,7 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { useAuth } from "../auth/useAuth";
 import { Pagination } from "../components/Pagination";
 import {
   createFixedExpenseApi,
@@ -104,6 +105,7 @@ function isOverdue(dateValue: string): boolean {
 }
 
 export function FixedExpensesPage() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState<FixedExpenseRecord[]>([]);
   const [totalPages, setTotalPages] = useState(1);
@@ -121,6 +123,8 @@ export function FixedExpensesPage() {
     overdue: number;
     dueSoon: number;
   } | null>(null);
+  const formPanelRef = useRef<HTMLElement | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
@@ -128,6 +132,8 @@ export function FixedExpensesPage() {
   const dueOnly = searchParams.get("dueOnly") === "true";
   const overdueOnly = searchParams.get("overdueOnly") === "true";
   const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+  const canWrite =
+    user?.role === "ADMIN_GENERAL" || user?.role === "ADMIN";
 
   useEffect(() => {
     let active = true;
@@ -261,6 +267,15 @@ export function FixedExpensesPage() {
     setFormError(null);
   };
 
+  const openNewExpenseForm = () => {
+    resetForm();
+    setSelectedExpenseId(null);
+    formPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.requestAnimationFrame(() => {
+      nameInputRef.current?.focus();
+    });
+  };
+
   const startEdit = (expense: FixedExpenseRecord) => {
     setEditingExpenseId(expense._id);
     setSelectedExpenseId(expense._id);
@@ -273,10 +288,16 @@ export function FixedExpensesPage() {
       notes: expense.notes ?? "",
     });
     setFormError(null);
+    formPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!canWrite) {
+      setFormError("Tu rol actual es solo lectura para gastos fijos.");
+      return;
+    }
+
     setIsSaving(true);
     setFormError(null);
 
@@ -396,7 +417,8 @@ export function FixedExpensesPage() {
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={resetForm}
+            onClick={openNewExpenseForm}
+            disabled={!canWrite}
           >
             Nuevo gasto
           </button>
@@ -404,11 +426,19 @@ export function FixedExpensesPage() {
             type="button"
             className="btn btn-primary"
             onClick={() => void handleRefreshAlerts()}
+            disabled={!canWrite}
           >
             Recalcular alertas
           </button>
         </div>
       </header>
+
+      {!canWrite && (
+        <article className="panel panel--warning">
+          <h3>Modo solo lectura</h3>
+          <p>Tu rol no permite crear, editar, pagar o eliminar gastos fijos.</p>
+        </article>
+      )}
 
       <div className="kpi-grid">
         <article className="kpi-card">
@@ -560,6 +590,7 @@ export function FixedExpensesPage() {
                             type="button"
                             className="btn btn-tertiary"
                             onClick={() => startEdit(row)}
+                            disabled={!canWrite}
                           >
                             Editar
                           </button>
@@ -567,7 +598,7 @@ export function FixedExpensesPage() {
                             type="button"
                             className="btn btn-ghost"
                             onClick={() => void handlePay(row)}
-                            disabled={row.status !== "ACTIVO"}
+                            disabled={!canWrite || row.status !== "ACTIVO"}
                           >
                             Pagar
                           </button>
@@ -575,6 +606,7 @@ export function FixedExpensesPage() {
                             type="button"
                             className="btn btn-ghost"
                             onClick={() => void handleDelete(row)}
+                            disabled={!canWrite}
                           >
                             Eliminar
                           </button>
@@ -623,7 +655,7 @@ export function FixedExpensesPage() {
                   onClick={() =>
                     void handleStatusChange(selectedExpense, "ACTIVO")
                   }
-                  disabled={selectedExpense.status === "ACTIVO"}
+                  disabled={!canWrite || selectedExpense.status === "ACTIVO"}
                 >
                   Marcar activo
                 </button>
@@ -633,7 +665,7 @@ export function FixedExpensesPage() {
                   onClick={() =>
                     void handleStatusChange(selectedExpense, "PAUSADO")
                   }
-                  disabled={selectedExpense.status === "PAUSADO"}
+                  disabled={!canWrite || selectedExpense.status === "PAUSADO"}
                 >
                   Pausar
                 </button>
@@ -641,7 +673,7 @@ export function FixedExpensesPage() {
             )}
           </article>
 
-          <article className="panel budget-form-panel">
+          <article className="panel budget-form-panel" ref={formPanelRef}>
             <div className="clients-form-header">
               <div>
                 <h3>{editingExpenseId ? "Editar gasto" : "Nuevo gasto"}</h3>
@@ -670,6 +702,7 @@ export function FixedExpensesPage() {
                 <span>Nombre *</span>
                 <input
                   type="text"
+                  ref={nameInputRef}
                   value={formState.name}
                   onChange={(event) =>
                     setFormState((current) => ({
