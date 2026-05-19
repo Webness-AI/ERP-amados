@@ -8,7 +8,7 @@ import {
 } from "../../core/auth/jwt.service";
 import { UserModel, type UserDocument } from "../users/user.model";
 import type {
-  BootstrapAdminInput,
+  ChangePasswordInput,
   LoginInput,
   RefreshInput,
 } from "./auth.schemas";
@@ -48,54 +48,6 @@ async function persistRefreshToken(
   user.refreshTokenHash = refreshTokenHash;
 }
 
-export async function bootstrapAdmin(
-  input: BootstrapAdminInput,
-): Promise<AuthResult> {
-  const activeUsers = await UserModel.countDocuments({
-    isActive: true,
-    deletedAt: null,
-  });
-
-  if (activeUsers > 0) {
-    throw new AppError(
-      "Bootstrap admin is disabled because users already exist",
-      409,
-      "BOOTSTRAP_ALREADY_DONE",
-    );
-  }
-
-  const passwordHash = await bcrypt.hash(
-    input.password,
-    env.BCRYPT_SALT_ROUNDS,
-  );
-
-  const user = new UserModel({
-    firstName: input.firstName,
-    lastName: input.lastName,
-    email: input.email.toLowerCase(),
-    passwordHash,
-    role: input.role,
-    isActive: true,
-    createdBy: "system",
-    updatedBy: "system",
-  });
-
-  const tokens = issueTokenPair({
-    userId: user.id,
-    role: user.role,
-    email: user.email,
-  });
-
-  await persistRefreshToken(user, tokens.refreshToken);
-  user.lastLoginAt = new Date();
-  await user.save();
-
-  return {
-    user: toPublicUser(user),
-    ...tokens,
-  };
-}
-
 export async function login(input: LoginInput): Promise<AuthResult> {
   const user = await UserModel.findOne({
     email: input.email.toLowerCase(),
@@ -104,6 +56,10 @@ export async function login(input: LoginInput): Promise<AuthResult> {
   });
 
   if (!user) {
+    throw new AppError("Invalid credentials", 401, "INVALID_CREDENTIALS");
+  }
+
+  if (!user.passwordHash) {
     throw new AppError("Invalid credentials", 401, "INVALID_CREDENTIALS");
   }
 
@@ -178,6 +134,35 @@ export async function logout(userId: string): Promise<void> {
     throw new AppError("User not found", 404, "USER_NOT_FOUND");
   }
 
+  user.refreshTokenHash = null;
+  user.updatedBy = user.id;
+  await user.save();
+}
+
+export async function changePassword(
+  userId: string,
+  input: ChangePasswordInput,
+): Promise<void> {
+  const user = await UserModel.findOne({
+    _id: userId,
+    isActive: true,
+    deletedAt: null,
+  });
+
+  if (!user || !user.passwordHash) {
+    throw new AppError("Invalid credentials", 401, "INVALID_CREDENTIALS");
+  }
+
+  const isCurrentPasswordValid = await bcrypt.compare(
+    input.oldPassword,
+    user.passwordHash,
+  );
+
+  if (!isCurrentPasswordValid) {
+    throw new AppError("Invalid credentials", 401, "INVALID_CREDENTIALS");
+  }
+
+  user.passwordHash = await bcrypt.hash(input.newPassword, env.BCRYPT_SALT_ROUNDS);
   user.refreshTokenHash = null;
   user.updatedBy = user.id;
   await user.save();

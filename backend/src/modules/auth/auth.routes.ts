@@ -2,14 +2,14 @@ import { Router, type RequestHandler } from "express";
 
 import { authMiddleware } from "../../core/auth/auth.middleware";
 import {
-  bootstrapAdmin,
+  changePassword,
   getProfile,
   login,
   logout,
   refreshSession,
 } from "./auth.service";
 import {
-  bootstrapAdminSchema,
+  changePasswordSchema,
   loginSchema,
   refreshSchema,
 } from "./auth.schemas";
@@ -30,22 +30,6 @@ function setRefreshCookie(
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 }
-
-authRouter.post("/bootstrap-admin", (req, res, next) => {
-  (async () => {
-    const payload = bootstrapAdminSchema.parse(req.body);
-    const result = await bootstrapAdmin(payload);
-    setRefreshCookie(res, result.refreshToken);
-
-    res.status(201).json({
-      ok: true,
-      data: {
-        user: result.user,
-        accessToken: result.accessToken,
-      },
-    });
-  })().catch(next);
-});
 
 authRouter.post("/login", (req, res, next) => {
   (async () => {
@@ -93,6 +77,21 @@ authRouter.post("/logout", authMiddleware, (req, res, next) => {
       ok: true,
       data: {
         message: "Session closed",
+      },
+    });
+  })().catch(next);
+});
+
+authRouter.patch("/change-password", authMiddleware, (req, res, next) => {
+  (async () => {
+    const payload = changePasswordSchema.parse(req.body);
+    await changePassword(req.user!.id, payload);
+    res.clearCookie(REFRESH_COOKIE_NAME, { path: "/api/v1/auth" });
+
+    res.status(200).json({
+      ok: true,
+      data: {
+        message: "Password updated",
       },
     });
   })().catch(next);

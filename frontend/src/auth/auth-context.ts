@@ -7,12 +7,6 @@ export type AuthContextValue = {
   isInitializing: boolean;
   isAuthenticated: boolean;
   login: (input: { email: string; password: string }) => Promise<void>;
-  bootstrapAdmin: (input: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    password: string;
-  }) => Promise<void>;
   logout: () => Promise<void>;
 };
 

@@ -230,7 +230,7 @@ export function ProductionPage() {
     const title = formState.title.trim();
 
     if (!projectId) {
-      setFormError("Project ID es obligatorio");
+      setFormError("El ID del proyecto es obligatorio");
       setIsSaving(false);
       return;
     }
@@ -566,7 +566,7 @@ export function ProductionPage() {
               onSubmit={(event) => void handleSubmit(event)}
             >
               <label>
-                <span>Project ID *</span>
+                <span>ID proyecto *</span>
                 <input
                   type="text"
                   value={formState.projectId}
