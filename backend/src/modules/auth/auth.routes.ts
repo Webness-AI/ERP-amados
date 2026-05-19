@@ -17,18 +17,23 @@ import {
 const authRouter = Router();
 
 const REFRESH_COOKIE_NAME = "refreshToken";
+const isProduction = process.env.NODE_ENV === "production";
+
+function getRefreshCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: isProduction ? ("none" as const) : ("lax" as const),
+    secure: isProduction,
+    path: "/api/v1/auth",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  };
+}
 
 function setRefreshCookie(
   res: Parameters<RequestHandler>[1],
   token: string,
 ): void {
-  res.cookie(REFRESH_COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/api/v1/auth",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+  res.cookie(REFRESH_COOKIE_NAME, token, getRefreshCookieOptions());
 }
 
 authRouter.post("/login", (req, res, next) => {
@@ -72,7 +77,7 @@ authRouter.post("/refresh", (req, res, next) => {
 authRouter.post("/logout", authMiddleware, (req, res, next) => {
   (async () => {
     await logout(req.user!.id);
-    res.clearCookie(REFRESH_COOKIE_NAME, { path: "/api/v1/auth" });
+    res.clearCookie(REFRESH_COOKIE_NAME, getRefreshCookieOptions());
     res.status(200).json({
       ok: true,
       data: {
@@ -86,7 +91,7 @@ authRouter.patch("/change-password", authMiddleware, (req, res, next) => {
   (async () => {
     const payload = changePasswordSchema.parse(req.body);
     await changePassword(req.user!.id, payload);
-    res.clearCookie(REFRESH_COOKIE_NAME, { path: "/api/v1/auth" });
+    res.clearCookie(REFRESH_COOKIE_NAME, getRefreshCookieOptions());
 
     res.status(200).json({
       ok: true,

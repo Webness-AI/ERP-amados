@@ -7,7 +7,7 @@ import { useAuth } from "../auth/useAuth";
 
 function extractErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error) && !error.response) {
-    return "No se pudo conectar con el backend. Verifica que el servidor esté levantado en http://localhost:4000.";
+    return "No se pudo conectar con el backend. Verifica la URL API y la configuración de CORS en producción.";
   }
 
   if (typeof error === "object" && error !== null) {
