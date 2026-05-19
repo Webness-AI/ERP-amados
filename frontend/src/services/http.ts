@@ -1,7 +1,20 @@
 import axios from "axios";
 
-const baseURL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api/v1";
+const DEFAULT_API_ORIGIN = "https://erp-amados.onrender.com";
+
+function resolveApiBaseUrl(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL?.trim();
+  const origin = configured && configured.length > 0 ? configured : DEFAULT_API_ORIGIN;
+  const normalizedOrigin = origin.replace(/\/+$/, "");
+
+  if (normalizedOrigin.endsWith("/api/v1")) {
+    return normalizedOrigin;
+  }
+
+  return `${normalizedOrigin}/api/v1`;
+}
+
+const baseURL = resolveApiBaseUrl();
 
 export const http = axios.create({
   baseURL,
