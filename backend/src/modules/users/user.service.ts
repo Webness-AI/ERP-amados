@@ -6,7 +6,7 @@ import {
   buildPaginatedResponse,
   parsePaginationInput,
 } from "../../core/utils/pagination";
-import type { Role } from "../auth/roles";
+import { ROLES, type Role } from "../auth/roles";
 import type {
   CreateUserInput,
   ListUsersInput,
@@ -115,7 +115,7 @@ export async function createUser(
     lastName: input.lastName,
     email: input.email.toLowerCase(),
     passwordHash,
-    role: input.role,
+    role: ROLES.USER,
     isActive: true,
     createdBy: actor.id,
     updatedBy: actor.id,

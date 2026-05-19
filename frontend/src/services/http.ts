@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const baseURL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1";
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api/v1";
 
 export const http = axios.create({
   baseURL,
@@ -49,7 +49,6 @@ function canAttemptRefresh(url?: string): boolean {
 
   return !(
     url.includes("/auth/login") ||
-    url.includes("/auth/bootstrap-admin") ||
     url.includes("/auth/refresh")
   );
 }

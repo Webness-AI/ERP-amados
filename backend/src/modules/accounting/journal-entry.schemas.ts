@@ -82,9 +82,16 @@ export const reportRangeSchema = z.object({
   to: z.string().datetime().optional(),
 });
 
+export const generalLedgerQuerySchema = z.object({
+  accountCode: z.string().trim().min(1).max(60),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+});
+
 export type CreateJournalEntryInput = z.infer<typeof createJournalEntrySchema>;
 export type ReverseJournalEntryInput = z.infer<
   typeof reverseJournalEntrySchema
 >;
 export type ListJournalEntriesInput = z.infer<typeof listJournalEntriesSchema>;
 export type ReportRangeInput = z.infer<typeof reportRangeSchema>;
+export type GeneralLedgerQueryInput = z.infer<typeof generalLedgerQuerySchema>;

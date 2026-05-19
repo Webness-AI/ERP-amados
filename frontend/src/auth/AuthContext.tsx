@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import {
-  bootstrapAdminApi,
   type AuthUser,
   loginApi,
   logoutApi,
@@ -68,12 +67,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(result.user);
   };
 
-  const bootstrapAdmin: AuthContextValue["bootstrapAdmin"] = async (input) => {
-    const result = await bootstrapAdminApi(input);
-    setAccessToken(result.accessToken);
-    setUser(result.user);
-  };
-
   const logout: AuthContextValue["logout"] = async () => {
     try {
       await logoutApi();
@@ -90,7 +83,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isInitializing,
         isAuthenticated: user !== null,
         login,
-        bootstrapAdmin,
         logout,
       }}
     >

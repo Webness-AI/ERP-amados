@@ -4,10 +4,15 @@ import {
   buildPaginatedResponse,
   parsePaginationInput,
 } from "../../core/utils/pagination";
-import { AccountModel } from "../accounts/account.model";
-import type { AccountType } from "../accounts/account.model";
+import {
+  ACCOUNT_NATURES,
+  AccountModel,
+  type AccountNature,
+  type ResultClassification,
+} from "../accounts/account.model";
 import {
   type CreateJournalEntryInput,
+  type GeneralLedgerQueryInput,
   type ListJournalEntriesInput,
   type ReportRangeInput,
 } from "./journal-entry.schemas";
@@ -44,7 +49,8 @@ type JournalEntryInternalInput = {
 type TrialBalanceRow = {
   accountCode: string;
   accountName: string;
-  accountType: AccountType | "UNKNOWN";
+  accountNature: AccountNature | "UNKNOWN";
+  resultClassification: ResultClassification | null;
   totalDebit: number;
   totalCredit: number;
   balance: number;
@@ -54,6 +60,16 @@ type IncomeStatementRow = {
   accountCode: string;
   accountName: string;
   total: number;
+};
+
+type GeneralLedgerTransaction = {
+  entryId: string;
+  entryDate: Date;
+  entryDescription: string;
+  lineDescription: string | null;
+  debit: number;
+  credit: number;
+  runningBalance: number;
 };
 
 function normalizeOptionalString(value?: string | null): string | null {
@@ -419,7 +435,8 @@ export async function getTrialBalanceReport(query: ReportRangeInput): Promise<{
       const current: TrialBalanceRow = acc.get(key) ?? {
         accountCode: key,
         accountName: line.accountName,
-        accountType: "UNKNOWN",
+          accountNature: "UNKNOWN",
+        resultClassification: null,
         totalDebit: 0,
         totalCredit: 0,
         balance: 0,
@@ -438,17 +455,32 @@ export async function getTrialBalanceReport(query: ReportRangeInput): Promise<{
     code: { $in: [...acc.keys()] },
     deletedAt: null,
   })
-    .select("code type")
+    .select("code naturaleza resultClassification")
     .lean();
 
-  const typeByCode = new Map<string, AccountType>(
-    accounts.map((account) => [account.code, account.type as AccountType]),
+  const natureByCode = new Map<string, AccountNature>(
+    accounts.map((account) => [
+      account.code,
+      account.naturaleza as AccountNature,
+    ]),
+  );
+
+  const resultClassificationByCode = new Map<
+    string,
+    ResultClassification | null
+  >(
+    accounts.map((account) => [
+      account.code,
+      (account.resultClassification as ResultClassification | null) ?? null,
+    ]),
   );
 
   const rows = [...acc.values()]
     .map<TrialBalanceRow>((row) => ({
       ...row,
-      accountType: typeByCode.get(row.accountCode) ?? "UNKNOWN",
+      accountNature: natureByCode.get(row.accountCode) ?? "UNKNOWN",
+      resultClassification:
+        resultClassificationByCode.get(row.accountCode) ?? null,
     }))
     .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
 
@@ -477,7 +509,8 @@ export async function getIncomeStatementReport(
   const trialBalance = await getTrialBalanceReport(query);
 
   const income = trialBalance.rows
-    .filter((row) => row.accountType === "INCOME")
+    .filter((row) => row.accountNature === ACCOUNT_NATURES.RESULTADO)
+    .filter((row) => row.resultClassification === "GENERAL")
     .map((row) => ({
       accountCode: row.accountCode,
       accountName: row.accountName,
@@ -485,7 +518,8 @@ export async function getIncomeStatementReport(
     }));
 
   const expenses = trialBalance.rows
-    .filter((row) => row.accountType === "EXPENSE")
+    .filter((row) => row.accountNature === ACCOUNT_NATURES.RESULTADO)
+    .filter((row) => row.resultClassification !== "GENERAL")
     .map((row) => ({
       accountCode: row.accountCode,
       accountName: row.accountName,
@@ -510,6 +544,150 @@ export async function getIncomeStatementReport(
   };
 }
 
+export async function getGeneralLedgerReport(
+  query: GeneralLedgerQueryInput,
+): Promise<{
+  account: {
+    code: string;
+    name: string;
+    naturaleza: AccountNature;
+    resultClassification: ResultClassification | null;
+  };
+  transactions: GeneralLedgerTransaction[];
+  totals: {
+    debit: number;
+    credit: number;
+    endingBalance: number;
+  };
+}> {
+  const accountCode = query.accountCode.trim().toUpperCase();
+
+  const account = await AccountModel.findOne({
+    code: accountCode,
+    deletedAt: null,
+  })
+    .select("code name naturaleza resultClassification")
+    .lean();
+
+  if (!account) {
+    throw new AppError("Account not found", 404, "ACCOUNT_NOT_FOUND");
+  }
+
+  const rangeFilter = buildRangeFilter(query);
+  const entries = await JournalEntryModel.find({
+    deletedAt: null,
+    "lines.accountCode": accountCode,
+    ...rangeFilter,
+  })
+    .select("_id entryDate description lines")
+    .sort({ entryDate: 1, createdAt: 1 })
+    .lean();
+
+  const transactions: GeneralLedgerTransaction[] = [];
+  let totalDebit = 0;
+  let totalCredit = 0;
+  let runningBalance = 0;
+
+  for (const entry of entries) {
+    for (const line of entry.lines) {
+      if (line.accountCode !== accountCode) {
+        continue;
+      }
+
+      totalDebit = normalizeMoney(totalDebit + line.debit);
+      totalCredit = normalizeMoney(totalCredit + line.credit);
+      runningBalance = normalizeMoney(runningBalance + line.debit - line.credit);
+
+      transactions.push({
+        entryId: entry._id.toString(),
+        entryDate: entry.entryDate,
+        entryDescription: entry.description,
+        lineDescription: line.description ?? null,
+        debit: line.debit,
+        credit: line.credit,
+        runningBalance,
+      });
+    }
+  }
+
+  return {
+    account: {
+      code: account.code,
+      name: account.name,
+      naturaleza: account.naturaleza as AccountNature,
+      resultClassification:
+        (account.resultClassification as ResultClassification | null) ?? null,
+    },
+    transactions,
+    totals: {
+      debit: totalDebit,
+      credit: totalCredit,
+      endingBalance: runningBalance,
+    },
+  };
+}
+
+export async function getFinancialStatementReport(
+  query: ReportRangeInput,
+): Promise<{
+  balanceSheet: {
+    assets: TrialBalanceRow[];
+    liabilities: TrialBalanceRow[];
+    equity: TrialBalanceRow[];
+    totals: {
+      assets: number;
+      liabilities: number;
+      equity: number;
+    };
+  };
+  incomeStatement: {
+    income: IncomeStatementRow[];
+    expenses: IncomeStatementRow[];
+    totals: {
+      income: number;
+      expenses: number;
+      netResult: number;
+    };
+  };
+  summary: {
+    assets: number;
+    liabilities: number;
+    equity: number;
+    netResult: number;
+    liabilitiesPlusEquity: number;
+    liabilitiesPlusEquityAndResult: number;
+    equationGap: number;
+  };
+}> {
+  const [balanceSheet, incomeStatement] = await Promise.all([
+    getBalanceSheetReport(query),
+    getIncomeStatementReport(query),
+  ]);
+
+  const liabilitiesPlusEquity = normalizeMoney(
+    balanceSheet.totals.liabilities + balanceSheet.totals.equity,
+  );
+  const liabilitiesPlusEquityAndResult = normalizeMoney(
+    liabilitiesPlusEquity + incomeStatement.totals.netResult,
+  );
+
+  return {
+    balanceSheet,
+    incomeStatement,
+    summary: {
+      assets: balanceSheet.totals.assets,
+      liabilities: balanceSheet.totals.liabilities,
+      equity: balanceSheet.totals.equity,
+      netResult: incomeStatement.totals.netResult,
+      liabilitiesPlusEquity,
+      liabilitiesPlusEquityAndResult,
+      equationGap: normalizeMoney(
+        balanceSheet.totals.assets - liabilitiesPlusEquityAndResult,
+      ),
+    },
+  };
+}
+
 export async function getBalanceSheetReport(query: ReportRangeInput): Promise<{
   assets: TrialBalanceRow[];
   liabilities: TrialBalanceRow[];
@@ -523,21 +701,21 @@ export async function getBalanceSheetReport(query: ReportRangeInput): Promise<{
   const trialBalance = await getTrialBalanceReport(query);
 
   const assets = trialBalance.rows
-    .filter((row) => row.accountType === "ASSET")
+    .filter((row) => row.accountNature === ACCOUNT_NATURES.ACTIVO)
     .map((row) => ({
       ...row,
       balance: normalizeMoney(row.totalDebit - row.totalCredit),
     }));
 
   const liabilities = trialBalance.rows
-    .filter((row) => row.accountType === "LIABILITY")
+    .filter((row) => row.accountNature === ACCOUNT_NATURES.PASIVO)
     .map((row) => ({
       ...row,
       balance: normalizeMoney(row.totalCredit - row.totalDebit),
     }));
 
   const equity = trialBalance.rows
-    .filter((row) => row.accountType === "EQUITY")
+    .filter((row) => row.accountNature === ACCOUNT_NATURES.PATRIMONIO_NETO)
     .map((row) => ({
       ...row,
       balance: normalizeMoney(row.totalCredit - row.totalDebit),

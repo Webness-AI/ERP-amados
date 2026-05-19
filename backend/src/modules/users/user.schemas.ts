@@ -9,7 +9,6 @@ export const createUserSchema = z.object({
   lastName: z.string().trim().min(2).max(120),
   email: z.string().trim().email().max(200),
   password: z.string().min(8).max(128),
-  role: roleSchema.default(ROLES.USER),
 });
 
 export const updateUserSchema = z

@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Pagination } from "../components/Pagination";
 
 import {
+  getGeneralLedgerReportApi,
   getMaterialsApi,
   getPurchaseSuggestionsApi,
   type MaterialCategory,
@@ -23,6 +24,7 @@ export function StockPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [lowStockCount, setLowStockCount] = useState(0);
   const [estimatedCost, setEstimatedCost] = useState(0);
+  const [currentCmv, setCurrentCmv] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,13 +42,14 @@ export function StockPage() {
       setError(null);
 
       try {
-        const [materialsData, purchaseListData] = await Promise.all([
+        const [materialsData, purchaseListData, cmvLedgerData] = await Promise.all([
           getMaterialsApi({
             page: safePage,
             limit: PAGE_SIZE,
             category: selectedCategory,
           }),
           getPurchaseSuggestionsApi({ category: selectedCategory }),
+          getGeneralLedgerReportApi({ accountCode: "CMV" }),
         ]);
 
         if (!active) {
@@ -57,6 +60,7 @@ export function StockPage() {
         setTotalPages(Math.max(materialsData.pagination.totalPages, 1));
         setLowStockCount(purchaseListData.pagination.total);
         setEstimatedCost(purchaseListData.totals.estimatedTotalCost);
+        setCurrentCmv(Math.abs(cmvLedgerData.totals.endingBalance));
       } catch {
         if (!active) {
           return;
@@ -132,6 +136,13 @@ export function StockPage() {
           <strong>{formatMoney(estimatedCost)}</strong>
           <small className="kpi-neutral">
             Basado en lista de compra sugerida
+          </small>
+        </article>
+        <article className="kpi-card">
+          <h3>CMV contable</h3>
+          <strong>{formatMoney(currentCmv)}</strong>
+          <small className="kpi-neutral">
+            Acumulado desde el mayor de costos
           </small>
         </article>
         <article className="kpi-card">

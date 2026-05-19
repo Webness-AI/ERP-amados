@@ -197,18 +197,23 @@ export type UserRecord = {
   updatedAt: string;
 };
 
-export type AccountType =
-  | "ASSET"
-  | "LIABILITY"
-  | "EQUITY"
-  | "INCOME"
-  | "EXPENSE";
+export type AccountNature =
+  | "ACTIVO"
+  | "PASIVO"
+  | "PATRIMONIO_NETO"
+  | "RESULTADO";
+
+export type ResultClassification =
+  | "GASTOS_PRODUCCION"
+  | "GASTOS_ADMIN_COMERCIAL"
+  | "GENERAL";
 
 export type AccountRecord = {
   _id: string;
   code: string;
   name: string;
-  type: AccountType;
+  naturaleza: AccountNature;
+  resultClassification?: ResultClassification | null;
   parentAccountId?: string | null;
   isActive: boolean;
   createdAt: string;
@@ -216,28 +221,73 @@ export type AccountRecord = {
 };
 
 export type DashboardOverview = {
-  cash: {
-    income: number;
-    expense: number;
+  period: {
+    from: string;
+    to: string;
   };
   projects: {
     totalActive: number;
     byStatus: Array<{ status: string; count: number }>;
+    deliveryDueSoon: number;
+    deliveryOverdue: number;
+  };
+  sales: {
+    approvedBudgets: number;
+    accumulatedAmount: number;
+  };
+  collections: {
+    pendingAmount: number;
+    overdueCount: number;
+    overdueAmount: number;
+    dueSoonCount: number;
+    collectedInPeriod: number;
+  };
+  cash: {
+    income: number;
+    expense: number;
+    net: number;
+  };
+  purchases: {
+    openCount: number;
+    receivedAmountInPeriod: number;
   };
   stock: {
     lowStockMaterials: number;
+    purchaseSuggestions: number;
+    estimatedPurchaseCost: number;
+    currentCmv: number;
+  };
+  production: {
+    openOrders: number;
+    inProgressOrders: number;
+    highPriorityOpenOrders: number;
+    byStatus: Array<{ status: string; count: number }>;
+  };
+  accounting: {
+    journalEntriesInPeriod: number;
+    income: number;
+    expenses: number;
+    netResult: number;
   };
 };
 
 export type DashboardAlerts = {
+  config: {
+    now: string;
+    horizon: string;
+    limit: number;
+  };
   projects: {
     deliveryDueSoon: Array<{ name: string; deliveryDate: string }>;
+    deliveryOverdue: Array<{ name: string; deliveryDate: string }>;
   };
   collections: {
     dueSoon: Array<{ id: string; dueDate: string }>;
+    overdue: Array<{ id: string; dueDate: string }>;
   };
   fixedExpenses: {
     dueSoon: Array<{ name: string; nextDueDate: string }>;
+    overdue: Array<{ name: string; nextDueDate: string }>;
   };
 };
 
@@ -769,7 +819,6 @@ export async function createUserApi(input: {
   lastName: string;
   email: string;
   password: string;
-  role?: AppRole;
 }): Promise<UserRecord> {
   const response = await http.post<ApiEnvelope<{ user: UserRecord }>>(
     "/users",
@@ -830,7 +879,8 @@ export async function getAccountsApi(params: {
   page: number;
   limit: number;
   search?: string;
-  type?: AccountType;
+  naturaleza?: AccountNature;
+  resultClassification?: ResultClassification;
   activeOnly?: boolean;
   parentAccountId?: string;
 }): Promise<PaginatedAccountsResult> {
@@ -841,7 +891,10 @@ export async function getAccountsApi(params: {
         page: String(params.page),
         limit: String(params.limit),
         ...(params.search ? { search: params.search } : {}),
-        ...(params.type ? { type: params.type } : {}),
+        ...(params.naturaleza ? { naturaleza: params.naturaleza } : {}),
+        ...(params.resultClassification
+          ? { resultClassification: params.resultClassification }
+          : {}),
         ...(params.activeOnly !== undefined
           ? { activeOnly: params.activeOnly ? "true" : "false" }
           : {}),
@@ -857,7 +910,8 @@ export async function getAccountsApi(params: {
 export async function createAccountApi(input: {
   code: string;
   name: string;
-  type: AccountType;
+  naturaleza: AccountNature;
+  resultClassification?: ResultClassification | null;
   parentAccountId?: string;
   isActive?: boolean;
 }): Promise<AccountRecord> {
@@ -873,7 +927,8 @@ export async function updateAccountApi(
   input: {
     code?: string;
     name?: string;
-    type?: AccountType;
+    naturaleza?: AccountNature;
+    resultClassification?: ResultClassification | null;
     parentAccountId?: string | null;
     isActive?: boolean;
   },
@@ -892,13 +947,13 @@ export async function deleteAccountApi(id: string): Promise<void> {
 export type TrialBalanceRow = {
   accountCode: string;
   accountName: string;
-  accountType:
-    | "ASSET"
-    | "LIABILITY"
-    | "EQUITY"
-    | "INCOME"
-    | "EXPENSE"
+  accountNature:
+    | "ACTIVO"
+    | "PASIVO"
+    | "PATRIMONIO_NETO"
+    | "RESULTADO"
     | "UNKNOWN";
+  resultClassification: ResultClassification | null;
   totalDebit: number;
   totalCredit: number;
   balance: number;
@@ -941,6 +996,43 @@ export type BalanceSheetReport = {
   };
 };
 
+export type GeneralLedgerReport = {
+  account: {
+    code: string;
+    name: string;
+    naturaleza: AccountNature;
+    resultClassification: ResultClassification | null;
+  };
+  transactions: Array<{
+    entryId: string;
+    entryDate: string;
+    entryDescription: string;
+    lineDescription: string | null;
+    debit: number;
+    credit: number;
+    runningBalance: number;
+  }>;
+  totals: {
+    debit: number;
+    credit: number;
+    endingBalance: number;
+  };
+};
+
+export type FinancialStatementReport = {
+  balanceSheet: BalanceSheetReport;
+  incomeStatement: IncomeStatementReport;
+  summary: {
+    assets: number;
+    liabilities: number;
+    equity: number;
+    netResult: number;
+    liabilitiesPlusEquity: number;
+    liabilitiesPlusEquityAndResult: number;
+    equationGap: number;
+  };
+};
+
 export type PurchaseSuggestions = {
   pagination: PaginationMeta;
   totals: {
@@ -963,20 +1055,11 @@ export async function loginApi(input: {
   return response.data.data;
 }
 
-export async function bootstrapAdminApi(input: {
-  firstName: string;
-  lastName: string;
-  email: string;
-  password: string;
-}): Promise<AuthData> {
-  const response = await http.post<ApiEnvelope<AuthData>>(
-    "/auth/bootstrap-admin",
-    {
-      ...input,
-      role: "ADMIN_GENERAL",
-    },
-  );
-  return response.data.data;
+export async function changeMyPasswordApi(input: {
+  oldPassword: string;
+  newPassword: string;
+}): Promise<void> {
+  await http.patch("/auth/change-password", input);
 }
 
 export async function refreshSessionApi(): Promise<AuthData> {
@@ -1348,6 +1431,40 @@ export async function getBalanceSheetReportApi(params: {
 }): Promise<BalanceSheetReport> {
   const response = await http.get<ApiEnvelope<BalanceSheetReport>>(
     "/accounting/reports/balance-sheet",
+    {
+      params: {
+        ...(params.from ? { from: params.from } : {}),
+        ...(params.to ? { to: params.to } : {}),
+      },
+    },
+  );
+  return response.data.data;
+}
+
+export async function getGeneralLedgerReportApi(params: {
+  accountCode: string;
+  from?: string;
+  to?: string;
+}): Promise<GeneralLedgerReport> {
+  const response = await http.get<ApiEnvelope<GeneralLedgerReport>>(
+    "/accounting/reports/general-ledger",
+    {
+      params: {
+        accountCode: params.accountCode,
+        ...(params.from ? { from: params.from } : {}),
+        ...(params.to ? { to: params.to } : {}),
+      },
+    },
+  );
+  return response.data.data;
+}
+
+export async function getFinancialStatementReportApi(params: {
+  from?: string;
+  to?: string;
+}): Promise<FinancialStatementReport> {
+  const response = await http.get<ApiEnvelope<FinancialStatementReport>>(
+    "/accounting/reports/financial-statement",
     {
       params: {
         ...(params.from ? { from: params.from } : {}),

@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Pagination } from "../components/Pagination";
 
 import {
+  changeMyPasswordApi,
   createAccountApi,
   createUserApi,
   deleteAccountApi,
@@ -15,10 +16,12 @@ import {
   updateUserRoleApi,
   updateUserStatusApi,
   type AccountRecord,
-  type AccountType,
+  type AccountNature,
+  type ResultClassification,
   type AppRole,
   type UserRecord,
 } from "../services/erp-api";
+import { useAuth } from "../auth/useAuth";
 
 const PAGE_SIZE = 12;
 
@@ -29,13 +32,13 @@ type UserFormState = {
   lastName: string;
   email: string;
   password: string;
-  role: AppRole;
 };
 
 type AccountFormState = {
   code: string;
   name: string;
-  type: AccountType;
+  naturaleza: AccountNature;
+  resultClassification: ResultClassification | "";
   parentAccountId: string;
 };
 
@@ -44,23 +47,28 @@ const emptyUserForm: UserFormState = {
   lastName: "",
   email: "",
   password: "",
-  role: "USER",
 };
 
 const emptyAccountForm: AccountFormState = {
   code: "",
   name: "",
-  type: "ASSET",
+  naturaleza: "ACTIVO",
+  resultClassification: "",
   parentAccountId: "",
 };
 
 const roleOptions: AppRole[] = ["ADMIN_GENERAL", "ADMIN", "USER"];
-const accountTypeOptions: AccountType[] = [
-  "ASSET",
-  "LIABILITY",
-  "EQUITY",
-  "INCOME",
-  "EXPENSE",
+const accountNatureOptions: AccountNature[] = [
+  "ACTIVO",
+  "PASIVO",
+  "PATRIMONIO_NETO",
+  "RESULTADO",
+];
+
+const resultClassificationOptions: ResultClassification[] = [
+  "GASTOS_PRODUCCION",
+  "GASTOS_ADMIN_COMERCIAL",
+  "GENERAL",
 ];
 
 function formatDate(value?: string | null): string {
@@ -77,6 +85,7 @@ function formatDate(value?: string | null): string {
 }
 
 export function SettingsPage() {
+  const { user: currentUser, logout } = useAuth();
   const [tab, setTab] = useState<SettingsTab>("users");
 
   const [users, setUsers] = useState<UserRecord[]>([]);
@@ -96,13 +105,22 @@ export function SettingsPage() {
   const [accountsError, setAccountsError] = useState<string | null>(null);
   const [accountsPage, setAccountsPage] = useState(1);
   const [accountsSearch, setAccountsSearch] = useState("");
-  const [accountsType, setAccountsType] = useState<AccountType | "">("");
+  const [accountsNature, setAccountsNature] = useState<AccountNature | "">(
+    "",
+  );
+  const [accountsResultClassification, setAccountsResultClassification] =
+    useState<ResultClassification | "">("");
   const [accountsActiveOnly, setAccountsActiveOnly] = useState<
     "all" | "active"
   >("all");
 
   const [formError, setFormError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
   const [userForm, setUserForm] = useState<UserFormState>(emptyUserForm);
   const [accountForm, setAccountForm] =
@@ -140,7 +158,10 @@ export function SettingsPage() {
         page: accountsPage,
         limit: PAGE_SIZE,
         ...(accountsSearch ? { search: accountsSearch } : {}),
-        ...(accountsType ? { type: accountsType } : {}),
+        ...(accountsNature ? { naturaleza: accountsNature } : {}),
+        ...(accountsResultClassification
+          ? { resultClassification: accountsResultClassification }
+          : {}),
         ...(accountsActiveOnly === "active" ? { activeOnly: true } : {}),
       });
       setAccounts(data.items);
@@ -158,7 +179,13 @@ export function SettingsPage() {
 
   useEffect(() => {
     void loadAccounts();
-  }, [accountsPage, accountsSearch, accountsType, accountsActiveOnly]);
+  }, [
+    accountsPage,
+    accountsSearch,
+    accountsNature,
+    accountsResultClassification,
+    accountsActiveOnly,
+  ]);
 
   const updateUsersFilter = (next: {
     search?: string;
@@ -179,14 +206,18 @@ export function SettingsPage() {
 
   const updateAccountsFilter = (next: {
     search?: string;
-    type?: AccountType | "";
+    naturaleza?: AccountNature | "";
+    resultClassification?: ResultClassification | "";
     activeOnly?: "all" | "active";
   }) => {
     if (next.search !== undefined) {
       setAccountsSearch(next.search);
     }
-    if (next.type !== undefined) {
-      setAccountsType(next.type);
+    if (next.naturaleza !== undefined) {
+      setAccountsNature(next.naturaleza);
+    }
+    if (next.resultClassification !== undefined) {
+      setAccountsResultClassification(next.resultClassification);
     }
     if (next.activeOnly !== undefined) {
       setAccountsActiveOnly(next.activeOnly);
@@ -204,12 +235,13 @@ export function SettingsPage() {
   const accountStats = useMemo(() => {
     const total = accounts.length;
     const active = accounts.filter((account) => account.isActive).length;
-    const byType = accountTypeOptions.reduce(
-      (acc, type) => ({
+    const byType = accountNatureOptions.reduce(
+      (acc, naturaleza) => ({
         ...acc,
-        [type]: accounts.filter((a) => a.type === type).length,
+        [naturaleza]: accounts.filter((a) => a.naturaleza === naturaleza)
+          .length,
       }),
-      {} as Record<AccountType, number>,
+      {} as Record<AccountNature, number>,
     );
     return { total, active, byType };
   }, [accounts]);
@@ -224,7 +256,6 @@ export function SettingsPage() {
       lastName: userForm.lastName.trim(),
       email: userForm.email.trim(),
       password: userForm.password,
-      role: userForm.role,
     };
 
     if (
@@ -249,6 +280,43 @@ export function SettingsPage() {
     }
   };
 
+  const handleChangeMyPassword = async (
+    event: FormEvent<HTMLFormElement>,
+) => {
+    event.preventDefault();
+    setPasswordError(null);
+    setPasswordSuccess(null);
+
+    if (!oldPassword || !newPassword) {
+      setPasswordError("Completa la contraseña actual y la nueva");
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setPasswordError("La nueva contraseña debe tener al menos 8 caracteres");
+      return;
+    }
+
+    setIsChangingPassword(true);
+
+    try {
+      await changeMyPasswordApi({
+        oldPassword,
+        newPassword,
+      });
+      setOldPassword("");
+      setNewPassword("");
+      setPasswordSuccess(
+        "Contraseña actualizada. Debes iniciar sesión nuevamente.",
+      );
+      await logout();
+    } catch {
+      setPasswordError("No se pudo cambiar la contraseña");
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   const handleCreateAccount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSaving(true);
@@ -257,7 +325,11 @@ export function SettingsPage() {
     const payload = {
       code: accountForm.code.trim().toUpperCase(),
       name: accountForm.name.trim(),
-      type: accountForm.type,
+      naturaleza: accountForm.naturaleza,
+      resultClassification:
+        accountForm.naturaleza === "RESULTADO"
+          ? accountForm.resultClassification || undefined
+          : null,
       parentAccountId: accountForm.parentAccountId.trim() || undefined,
     };
 
@@ -382,14 +454,29 @@ export function SettingsPage() {
       return;
     }
 
-    const type = window.prompt(
-      `Tipo (${accountTypeOptions.join("/")})`,
-      account.type,
-    ) as AccountType | null;
+    const naturaleza = window.prompt(
+      `Naturaleza (${accountNatureOptions.join("/")})`,
+      account.naturaleza,
+    ) as AccountNature | null;
 
-    if (!type || !accountTypeOptions.includes(type)) {
-      setFormError("Tipo de cuenta invalido");
+    if (!naturaleza || !accountNatureOptions.includes(naturaleza)) {
+      setFormError("Naturaleza de cuenta invalida");
       return;
+    }
+
+    let resultClassification: ResultClassification | null = null;
+    if (naturaleza === "RESULTADO") {
+      const promptValue = window.prompt(
+        `Clasificación de resultado (${resultClassificationOptions.join("/")})`,
+        account.resultClassification ?? "GENERAL",
+      ) as ResultClassification | null;
+
+      if (!promptValue || !resultClassificationOptions.includes(promptValue)) {
+        setFormError("Clasificación de resultado invalida");
+        return;
+      }
+
+      resultClassification = promptValue;
     }
 
     const parentAccountIdRaw = window.prompt(
@@ -401,7 +488,8 @@ export function SettingsPage() {
       await updateAccountApi(account._id, {
         code,
         name,
-        type,
+        naturaleza,
+        resultClassification,
         parentAccountId: parentAccountIdRaw?.trim()
           ? parentAccountIdRaw.trim()
           : null,
@@ -700,24 +788,7 @@ export function SettingsPage() {
                     required
                   />
                 </label>
-                <label>
-                  <span>Rol</span>
-                  <select
-                    value={userForm.role}
-                    onChange={(event) =>
-                      setUserForm((current) => ({
-                        ...current,
-                        role: event.target.value as AppRole,
-                      }))
-                    }
-                  >
-                    {roleOptions.map((role) => (
-                      <option key={role} value={role}>
-                        {role}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <p className="kpi-neutral">Las altas nuevas se crean con rol USER.</p>
 
                 {formError && <p className="form-error">{formError}</p>}
 
@@ -735,6 +806,58 @@ export function SettingsPage() {
                     onClick={() => setUserForm(emptyUserForm)}
                   >
                     Reiniciar
+                  </button>
+                </div>
+              </form>
+
+              <hr />
+
+              <div className="clients-form-header">
+                <div>
+                  <h3>Mi contraseña</h3>
+                  <p>
+                    Usuario actual: {currentUser?.email ?? "Sin sesión"}
+                  </p>
+                </div>
+              </div>
+
+              <form
+                className="clients-form"
+                onSubmit={(event) => void handleChangeMyPassword(event)}
+              >
+                <label>
+                  <span>Contraseña actual *</span>
+                  <input
+                    type="password"
+                    value={oldPassword}
+                    onChange={(event) => setOldPassword(event.target.value)}
+                    minLength={8}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Nueva contraseña *</span>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    minLength={8}
+                    required
+                  />
+                </label>
+
+                {passwordError && <p className="form-error">{passwordError}</p>}
+                {passwordSuccess && (
+                  <p className="kpi-positive">{passwordSuccess}</p>
+                )}
+
+                <div className="clients-form-actions">
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={isChangingPassword}
+                  >
+                    {isChangingPassword ? "Actualizando..." : "Cambiar contraseña"}
                   </button>
                 </div>
               </form>
@@ -758,16 +881,15 @@ export function SettingsPage() {
             </article>
             <article className="kpi-card">
               <h3>Activos contables</h3>
-              <strong>{accountStats.byType.ASSET ?? 0}</strong>
-              <small>Tipo ASSET</small>
+              <strong>{accountStats.byType.ACTIVO ?? 0}</strong>
+              <small>Naturaleza ACTIVO</small>
             </article>
             <article className="kpi-card">
               <h3>Resultados</h3>
               <strong>
-                {(accountStats.byType.INCOME ?? 0) +
-                  (accountStats.byType.EXPENSE ?? 0)}
+                accountStats.byType.RESULTADO ?? 0
               </strong>
-              <small>Income + Expense</small>
+              <small>Naturaleza RESULTADO</small>
             </article>
           </div>
 
@@ -788,17 +910,37 @@ export function SettingsPage() {
                 <label className="clients-toggle">
                   <span>Tipo</span>
                   <select
-                    value={accountsType}
+                    value={accountsNature}
                     onChange={(event) =>
                       updateAccountsFilter({
-                        type: event.target.value as AccountType | "",
+                        naturaleza: event.target.value as AccountNature | "",
                       })
                     }
                   >
                     <option value="">Todos</option>
-                    {accountTypeOptions.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
+                    {accountNatureOptions.map((natureza) => (
+                      <option key={natureza} value={natureza}>
+                        {natureza}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="clients-toggle">
+                  <span>Clasificación resultado</span>
+                  <select
+                    value={accountsResultClassification}
+                    onChange={(event) =>
+                      updateAccountsFilter({
+                        resultClassification: event.target.value as
+                          | ResultClassification
+                          | "",
+                      })
+                    }
+                  >
+                    <option value="">Todas</option>
+                    {resultClassificationOptions.map((classification) => (
+                      <option key={classification} value={classification}>
+                        {classification}
                       </option>
                     ))}
                   </select>
@@ -825,7 +967,8 @@ export function SettingsPage() {
                     <tr>
                       <th>Codigo</th>
                       <th>Nombre</th>
-                      <th>Tipo</th>
+                      <th>Naturaleza</th>
+                      <th>Clasificación</th>
                       <th>Cuenta padre</th>
                       <th>Estado</th>
                       <th>Acciones</th>
@@ -834,14 +977,14 @@ export function SettingsPage() {
                   <tbody>
                     {accountsLoading && (
                       <tr>
-                        <td colSpan={6} className="text-center">
+                        <td colSpan={7} className="text-center">
                           Cargando cuentas...
                         </td>
                       </tr>
                     )}
                     {!accountsLoading && accountsError && (
                       <tr>
-                        <td colSpan={6} className="text-negative text-center">
+                        <td colSpan={7} className="text-negative text-center">
                           {accountsError}
                         </td>
                       </tr>
@@ -850,7 +993,7 @@ export function SettingsPage() {
                       !accountsError &&
                       accounts.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="text-center">
+                          <td colSpan={7} className="text-center">
                             No hay cuentas para mostrar
                           </td>
                         </tr>
@@ -863,11 +1006,12 @@ export function SettingsPage() {
                           <td>{account.name}</td>
                           <td>
                             <span
-                              className={`budget-chip budget-chip--${account.type.toLowerCase()}`}
+                              className={`budget-chip budget-chip--${account.naturaleza.toLowerCase()}`}
                             >
-                              {account.type}
+                              {account.naturaleza}
                             </span>
                           </td>
+                          <td>{account.resultClassification ?? "-"}</td>
                           <td>
                             {account.parentAccountId
                               ? account.parentAccountId.slice(-8)
@@ -963,23 +1107,51 @@ export function SettingsPage() {
                   />
                 </label>
                 <label>
-                  <span>Tipo</span>
+                  <span>Naturaleza</span>
                   <select
-                    value={accountForm.type}
+                    value={accountForm.naturaleza}
                     onChange={(event) =>
                       setAccountForm((current) => ({
                         ...current,
-                        type: event.target.value as AccountType,
+                        naturaleza: event.target.value as AccountNature,
+                        resultClassification:
+                          event.target.value === "RESULTADO"
+                            ? current.resultClassification || "GENERAL"
+                            : "",
                       }))
                     }
                   >
-                    {accountTypeOptions.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
+                    {accountNatureOptions.map((natureza) => (
+                      <option key={natureza} value={natureza}>
+                        {natureza}
                       </option>
                     ))}
                   </select>
                 </label>
+                {accountForm.naturaleza === "RESULTADO" && (
+                  <label>
+                    <span>Clasificación de resultado *</span>
+                    <select
+                      value={accountForm.resultClassification}
+                      onChange={(event) =>
+                        setAccountForm((current) => ({
+                          ...current,
+                          resultClassification: event.target.value as
+                            | ResultClassification
+                            | "",
+                        }))
+                      }
+                      required
+                    >
+                      <option value="">Seleccionar</option>
+                      {resultClassificationOptions.map((classification) => (
+                        <option key={classification} value={classification}>
+                          {classification}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label>
                   <span>Cuenta padre</span>
                   <input
