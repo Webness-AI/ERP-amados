@@ -65,6 +65,10 @@ if (!parsedEnv.success) {
 
 export const env = parsedEnv.data;
 
+function normalizeOrigin(origin: string): string {
+  return origin.trim().replace(/\/+$/, "");
+}
+
 export const corsOrigins = env.CORS_ORIGIN.split(",")
-  .map((origin) => origin.trim())
+  .map((origin) => normalizeOrigin(origin))
   .filter((origin) => origin.length > 0);
