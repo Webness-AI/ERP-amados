@@ -6,10 +6,7 @@ import {
   getIncomeStatementReportApi,
   type IncomeStatementReport,
 } from "../services/erp-api";
-
-function formatMoney(value: number): string {
-  return `$ ${value.toLocaleString("es-AR")}`;
-}
+import { formatMoney } from "../utils/formatters";
 
 function toIsoDate(value: string): string | undefined {
   if (!value) {

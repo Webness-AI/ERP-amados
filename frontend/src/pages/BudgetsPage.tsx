@@ -13,6 +13,10 @@ import {
   type BudgetRecord,
   type BudgetStatus,
 } from "../services/erp-api";
+import {
+  formatDate,
+  formatMoneyWithCurrency as formatMoney,
+} from "../utils/formatters";
 
 const PAGE_SIZE = 8;
 
@@ -69,19 +73,6 @@ function buildFormFromBudget(budget?: BudgetRecord | null): BudgetFormState {
           }))
         : [{ ...emptyItem }],
   };
-}
-
-function formatMoney(value: number, currency = "ARS"): string {
-  return `${currency} ${value.toLocaleString("es-AR")}`;
-}
-
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Sin fecha";
-  }
-
-  return date.toLocaleDateString("es-AR");
 }
 
 function calculateItemTotal(item: BudgetItemInput): number {

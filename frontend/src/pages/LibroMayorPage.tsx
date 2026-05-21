@@ -8,22 +8,7 @@ import {
   type AccountRecord,
   type GeneralLedgerReport,
 } from "../services/erp-api";
-
-function formatMoney(value: number): string {
-  return `$ ${value.toLocaleString("es-AR")}`;
-}
-
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Sin fecha";
-  }
-
-  return `${date.toLocaleDateString("es-AR")} ${date.toLocaleTimeString("es-AR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  })}`;
-}
+import { formatDateTime as formatDate, formatMoney } from "../utils/formatters";
 
 function toIsoDate(value: string): string | undefined {
   if (!value) {

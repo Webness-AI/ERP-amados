@@ -22,6 +22,7 @@ import {
 import type {
   CreateMaterialInput,
   ListProjectMaterialRequirementsInput,
+  ListPurchaseRecommendationsInput,
   ListPurchaseSuggestionsInput,
   ListMaterialsInput,
   ListStockMovementsInput,
@@ -82,6 +83,32 @@ type PublicPurchaseSuggestion = {
   missingQuantity: number;
   estimatedUnitCost: number;
   estimatedCost: number;
+};
+
+type PublicPurchaseRecommendationProject = {
+  projectId: string;
+  projectName: string;
+  status: string;
+  requiredQuantity: number;
+  reservedQuantity: number;
+  consumedQuantity: number;
+  remainingQuantity: number;
+};
+
+type PublicPurchaseRecommendation = {
+  materialId: string;
+  materialName: string;
+  materialSku: string | null;
+  category: MaterialCategory;
+  unit: string;
+  currentStock: number;
+  requiredQuantity: number;
+  reservedQuantity: number;
+  consumedQuantity: number;
+  pendingToPurchase: number;
+  estimatedUnitCost: number;
+  estimatedCost: number;
+  projects: PublicPurchaseRecommendationProject[];
 };
 
 function normalizeSku(value?: string | null): string | null {
@@ -331,6 +358,188 @@ async function getLastKnownUnitCost(materialId: string): Promise<number> {
     .lean();
 
   return movement?.unitCost ?? 0;
+}
+
+export async function listPurchaseRecommendations(
+  query: ListPurchaseRecommendationsInput,
+): Promise<{
+  items: PublicPurchaseRecommendation[];
+  totals: {
+    estimatedTotalCost: number;
+    materialCount: number;
+    projectCount: number;
+  };
+}> {
+  const filter: Record<string, unknown> = {
+    deletedAt: null,
+  };
+
+  if (query.projectId) {
+    filter.projectId = new mongoose.Types.ObjectId(query.projectId);
+  }
+
+  const requirements = await ProjectMaterialRequirementModel.find(filter)
+    .sort({ createdAt: -1 })
+    .lean();
+
+  if (requirements.length === 0) {
+    return {
+      items: [],
+      totals: {
+        estimatedTotalCost: 0,
+        materialCount: 0,
+        projectCount: 0,
+      },
+    };
+  }
+
+  const projectIds = Array.from(
+    new Set(requirements.map((requirement) => String(requirement.projectId))),
+  );
+  const materialIds = Array.from(
+    new Set(requirements.map((requirement) => String(requirement.materialId))),
+  );
+
+  const [projects, materials] = await Promise.all([
+    ProjectModel.find({
+      _id: { $in: projectIds },
+      deletedAt: null,
+      isActive: true,
+    })
+      .select("name status")
+      .lean(),
+    MaterialModel.find({
+      _id: { $in: materialIds },
+      deletedAt: null,
+      isActive: true,
+    })
+      .select("name category sku unit")
+      .lean(),
+  ]);
+
+  const projectMap = new Map(
+    projects.map((project) => [String(project._id), project]),
+  );
+  const materialMap = new Map(
+    materials.map((material) => [String(material._id), material]),
+  );
+
+  const recommendationsByMaterial = new Map<string, PublicPurchaseRecommendation>();
+
+  for (const requirement of requirements) {
+    const projectId = String(requirement.projectId);
+    const materialId = String(requirement.materialId);
+    const project = projectMap.get(projectId);
+    const material = materialMap.get(materialId);
+
+    if (!project || !material) {
+      continue;
+    }
+
+    if (query.search && query.search.trim().length > 0) {
+      const search = query.search.trim().toLowerCase();
+      const searchable = `${project.name} ${material.name} ${material.sku ?? ""}`.toLowerCase();
+
+      if (!searchable.includes(search)) {
+        continue;
+      }
+    }
+
+    const requiredQuantity = Number(requirement.requiredQuantity.toFixed(4));
+    const reservedQuantity = Number(requirement.reservedQuantity.toFixed(4));
+    const consumedQuantity = Number(requirement.consumedQuantity.toFixed(4));
+    const remainingQuantity = Math.max(
+      Number((requiredQuantity - reservedQuantity - consumedQuantity).toFixed(4)),
+      0,
+    );
+
+    if (remainingQuantity <= 0) {
+      continue;
+    }
+
+    const currentStock = await getCurrentStock(materialId);
+    const existing = recommendationsByMaterial.get(materialId);
+
+    if (!existing) {
+      recommendationsByMaterial.set(materialId, {
+        materialId,
+        materialName: material.name,
+        materialSku: material.sku ?? null,
+        category: material.category,
+        unit: material.unit,
+        currentStock,
+        requiredQuantity: remainingQuantity,
+        reservedQuantity,
+        consumedQuantity,
+        pendingToPurchase: 0,
+        estimatedUnitCost: await getLastKnownUnitCost(materialId),
+        estimatedCost: 0,
+        projects: [
+          {
+            projectId,
+            projectName: project.name,
+            status: project.status,
+            requiredQuantity,
+            reservedQuantity,
+            consumedQuantity,
+            remainingQuantity,
+          },
+        ],
+      });
+      continue;
+    }
+
+    existing.currentStock = currentStock;
+    existing.requiredQuantity = Number(
+      (existing.requiredQuantity + remainingQuantity).toFixed(4),
+    );
+    existing.reservedQuantity = Number(
+      (existing.reservedQuantity + reservedQuantity).toFixed(4),
+    );
+    existing.consumedQuantity = Number(
+      (existing.consumedQuantity + consumedQuantity).toFixed(4),
+    );
+    existing.projects.push({
+      projectId,
+      projectName: project.name,
+      status: project.status,
+      requiredQuantity,
+      reservedQuantity,
+      consumedQuantity,
+      remainingQuantity,
+    });
+  }
+
+  const items = Array.from(recommendationsByMaterial.values())
+    .map((item) => {
+      const pendingToPurchase = Math.max(
+        Number((item.requiredQuantity - item.currentStock).toFixed(4)),
+        0,
+      );
+
+      return {
+        ...item,
+        pendingToPurchase,
+        estimatedCost: Number(
+          (pendingToPurchase * item.estimatedUnitCost).toFixed(2),
+        ),
+      };
+    })
+    .filter((item) => item.pendingToPurchase > 0)
+    .sort((left, right) => right.pendingToPurchase - left.pendingToPurchase);
+
+  const estimatedTotalCost = Number(
+    items.reduce((acc, item) => acc + item.estimatedCost, 0).toFixed(2),
+  );
+
+  return {
+    items,
+    totals: {
+      estimatedTotalCost,
+      materialCount: items.length,
+      projectCount: projectIds.length,
+    },
+  };
 }
 
 async function emitLowStockEventIfNeeded(

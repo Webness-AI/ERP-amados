@@ -80,6 +80,11 @@ export const listPurchaseSuggestionsSchema = z.object({
   search: z.string().trim().optional(),
 });
 
+export const listPurchaseRecommendationsSchema = z.object({
+  projectId: z.string().trim().optional(),
+  search: z.string().trim().optional(),
+});
+
 export const listStockMovementsSchema = z.object({
   page: z.string().optional(),
   limit: z.string().optional(),
@@ -106,4 +111,7 @@ export type ReserveMaterialForProjectInput = z.infer<
 >;
 export type ListPurchaseSuggestionsInput = z.infer<
   typeof listPurchaseSuggestionsSchema
+>;
+export type ListPurchaseRecommendationsInput = z.infer<
+  typeof listPurchaseRecommendationsSchema
 >;

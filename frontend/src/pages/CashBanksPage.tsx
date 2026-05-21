@@ -10,6 +10,10 @@ import {
   type CashPaymentMethod,
   type CashSource,
 } from "../services/erp-api";
+import {
+  formatDateTime as formatDate,
+  formatMoneyWithCurrency as formatMoney,
+} from "../utils/formatters";
 
 const PAGE_SIZE = 10;
 
@@ -64,25 +68,6 @@ const emptyFormState: CashMovementFormState = {
   referenceId: "",
   occurredAt: "",
 };
-
-function formatMoney(value: number, currency = "ARS"): string {
-  return `${currency} ${value.toLocaleString("es-AR")}`;
-}
-
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Sin fecha";
-  }
-
-  return `${date.toLocaleDateString("es-AR")} ${date.toLocaleTimeString(
-    "es-AR",
-    {
-      hour: "2-digit",
-      minute: "2-digit",
-    },
-  )}`;
-}
 
 export function CashBanksPage() {
   const [searchParams, setSearchParams] = useSearchParams();
