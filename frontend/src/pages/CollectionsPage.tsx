@@ -12,6 +12,10 @@ import {
   type CollectionPaymentMethod,
   type CollectionStatus,
 } from "../services/erp-api";
+import {
+  formatDate,
+  formatMoneyWithCurrency as formatMoney,
+} from "../utils/formatters";
 
 const PAGE_SIZE = 10;
 
@@ -31,21 +35,6 @@ const paymentMethodOptions: CollectionPaymentMethod[] = [
   "CHEQUE",
   "OTRO",
 ];
-
-function formatMoney(value: number, currency = "ARS"): string {
-  return `${currency} ${value.toLocaleString("es-AR")}`;
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) {
-    return "Sin fecha";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Sin fecha";
-  }
-  return date.toLocaleDateString("es-AR");
-}
 
 export function CollectionsPage() {
   const { user } = useAuth();

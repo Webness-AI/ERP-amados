@@ -400,6 +400,29 @@ export async function getJournalEntryById(id: string): Promise<JournalEntry> {
   return entry;
 }
 
+export async function softDeleteJournalEntry(
+  id: string,
+  actor: Actor,
+): Promise<void> {
+  const entry = await JournalEntryModel.findOne({
+    _id: id,
+    deletedAt: null,
+  });
+
+  if (!entry) {
+    throw new AppError(
+      "Journal entry not found",
+      404,
+      "JOURNAL_ENTRY_NOT_FOUND",
+    );
+  }
+
+  entry.deletedAt = new Date();
+  entry.deletedBy = actor.id;
+  entry.updatedBy = actor.id;
+  await entry.save();
+}
+
 function buildRangeFilter(query: ReportRangeInput): Record<string, unknown> {
   if (!query.from && !query.to) {
     return {};

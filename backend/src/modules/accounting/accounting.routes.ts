@@ -14,6 +14,7 @@ import {
   getTrialBalanceReport,
   listJournalEntries,
   reverseJournalEntry,
+  softDeleteJournalEntry,
 } from "./journal-entry.service";
 import {
   createJournalEntrySchema,
@@ -107,6 +108,23 @@ accountingRouter.post(
       res.status(201).json({
         ok: true,
         data: { entry },
+      });
+    })().catch(next);
+  },
+);
+
+accountingRouter.delete(
+  "/journal-entries/:id",
+  authMiddleware,
+  authorizeMiddleware(WRITE_ROLES),
+  (req, res, next) => {
+    (async () => {
+      const entryId = requireRouteParam(req.params.id, "id");
+      await softDeleteJournalEntry(entryId, { id: req.user!.id });
+
+      res.status(200).json({
+        ok: true,
+        data: { message: "Journal entry deleted" },
       });
     })().catch(next);
   },

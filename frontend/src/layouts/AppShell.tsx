@@ -1,4 +1,5 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/useAuth";
 
@@ -20,6 +21,20 @@ type ShellIconName =
   | "bell"
   | "help"
   | "quote";
+
+type NavRouteItem = {
+  kind: "route";
+  to: string;
+  label: string;
+  icon: ShellIconName;
+  isActive?: (pathname: string) => boolean;
+};
+
+type NavSection = {
+  id: "ventas" | "inventario" | "contabilidad" | "flujo" | "operaciones";
+  label: string;
+  items: readonly NavRouteItem[];
+};
 
 function ShellIcon({ name }: { name: ShellIconName }) {
   switch (name) {
@@ -130,45 +145,163 @@ function ShellIcon({ name }: { name: ShellIconName }) {
   }
 }
 
-const navItems = [
-  { to: "/dashboard", label: "Tablero", icon: "dashboard" },
-  { to: "/clients", label: "Clientes", icon: "clients" },
-  { to: "/budgets", label: "Presupuestos", icon: "budgets" },
-  { to: "/projects", label: "Proyectos", icon: "projects" },
-  { to: "/stock", label: "Stock", icon: "stock" },
-  { to: "/purchases", label: "Compras", icon: "purchases" },
-  { to: "/production", label: "Produccion", icon: "production" },
+const navSections: readonly NavSection[] = [
   {
-    to: "/fixed-expenses",
-    label: "Gastos Fijos",
-    icon: "fixed-expenses",
-  },
-  { to: "/cash-banks", label: "Caja y Bancos", icon: "cash-banks" },
-  { to: "/accounting/diario", label: "Libro Diario", icon: "accounting" },
-  {
-    to: "/accounting/libro-mayor",
-    label: "Libro Mayor",
-    icon: "accounting",
+    id: "ventas",
+    label: "Ventas",
+    items: [
+      { kind: "route", to: "/clients", label: "Clientes", icon: "clients" },
+      { kind: "route", to: "/budgets", label: "Presupuestos", icon: "budgets" },
+      { kind: "route", to: "/projects", label: "Proyectos", icon: "projects" },
+    ],
   },
   {
-    to: "/accounting/estado-resultado",
-    label: "Estado de Resultado",
-    icon: "accounting",
+    id: "inventario",
+    label: "Inventario",
+    items: [
+      { kind: "route", to: "/stock", label: "Stock", icon: "stock" },
+      { kind: "route", to: "/purchases", label: "Compras", icon: "purchases" },
+      {
+        kind: "route",
+        to: "/future-purchases",
+        label: "Compras Futuras",
+        icon: "purchases",
+      },
+    ],
   },
   {
-    to: "/accounting/estado-contable",
-    label: "Estado Contable",
-    icon: "accounting",
+    id: "contabilidad",
+    label: "Contabilidad",
+    items: [
+      {
+        kind: "route",
+        to: "/accounting/diario",
+        label: "Libro Diario",
+        icon: "accounting",
+        isActive: (pathname) => pathname.startsWith("/accounting/diario"),
+      },
+      {
+        kind: "route",
+        to: "/accounting/libro-mayor",
+        label: "Libro Mayor",
+        icon: "accounting",
+        isActive: (pathname) => pathname.startsWith("/accounting/libro-mayor"),
+      },
+      {
+        kind: "route",
+        to: "/accounting/estado-resultado",
+        label: "Estado de Resultados",
+        icon: "accounting",
+        isActive: (pathname) => pathname.startsWith("/accounting/estado-resultado"),
+      },
+      {
+        kind: "route",
+        to: "/accounting/estado-contable",
+        label: "Estados Contables",
+        icon: "accounting",
+        isActive: (pathname) => pathname.startsWith("/accounting/estado-contable"),
+      },
+      {
+        kind: "route",
+        to: "/accounting/balances",
+        label: "Balances",
+        icon: "accounting",
+        isActive: (pathname) => pathname.startsWith("/accounting/balances"),
+      },
+    ],
   },
-  { to: "/accounting/balances", label: "Balances", icon: "accounting" },
-  { to: "/suppliers", label: "Proveedores", icon: "suppliers" },
-  { to: "/collections", label: "Cobranzas", icon: "collections" },
-  { to: "/settings", label: "Configuracion", icon: "settings" },
-] as const;
+  {
+    id: "flujo",
+    label: "Flujo",
+    items: [
+      {
+        kind: "route",
+        to: "/cash-banks",
+        label: "Caja y Bancos",
+        icon: "cash-banks",
+      },
+      {
+        kind: "route",
+        to: "/suppliers",
+        label: "Proveedores",
+        icon: "suppliers",
+      },
+      {
+        kind: "route",
+        to: "/collections",
+        label: "Cobranzas",
+        icon: "collections",
+      },
+      {
+        kind: "route",
+        to: "/future-purchases",
+        label: "Compras Futuras",
+        icon: "purchases",
+      },
+    ],
+  },
+  {
+    id: "operaciones",
+    label: "Operaciones",
+    items: [
+      {
+        kind: "route",
+        to: "/production",
+        label: "Produccion",
+        icon: "production",
+      },
+      {
+        kind: "route",
+        to: "/fixed-expenses",
+        label: "Gastos Fijos",
+        icon: "fixed-expenses",
+      },
+    ],
+  },
+];
+
+function isRouteItemActive(item: NavRouteItem, pathname: string) {
+  if (item.isActive) {
+    return item.isActive(pathname);
+  }
+
+  return pathname === item.to;
+}
 
 export function AppShell() {
   const { user, logout } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
+  const [expandedSections, setExpandedSections] = useState<Record<NavSection["id"], boolean>>(
+    () => ({
+      ventas: true,
+      inventario: true,
+      contabilidad: true,
+      flujo: true,
+      operaciones: false,
+    }),
+  );
+
+  const activeSectionIds = useMemo(() => {
+    return navSections
+      .filter((section) =>
+        section.items.some(
+          (item) =>
+            item.kind === "route" && isRouteItemActive(item, location.pathname),
+        ),
+      )
+      .map((section) => section.id);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    setExpandedSections((prev) => {
+      const next = { ...prev };
+      for (const sectionId of activeSectionIds) {
+        next[sectionId] = true;
+      }
+      return next;
+    });
+  }, [activeSectionIds]);
 
   const userName = user
     ? `${user.firstName} ${user.lastName}`.trim()
@@ -183,20 +316,77 @@ export function AppShell() {
           <p>SISTEMA DE GESTION</p>
         </div>
         <nav className="sidebar__nav" aria-label="Principal">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }: { isActive: boolean }) =>
-                `sidebar__link${isActive ? " sidebar__link--active" : ""}`
-              }
-            >
-              <span className="app-icon" aria-hidden="true">
-                <ShellIcon name={item.icon} />
-              </span>
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
+          <NavLink
+            to="/dashboard"
+            className={({ isActive }: { isActive: boolean }) =>
+              `sidebar__link${isActive ? " sidebar__link--active" : ""}`
+            }
+          >
+            <span className="app-icon" aria-hidden="true">
+              <ShellIcon name="dashboard" />
+            </span>
+            <span>Tablero</span>
+          </NavLink>
+
+          {navSections.map((section) => {
+            const isExpanded = expandedSections[section.id];
+            const isSectionActive = activeSectionIds.includes(section.id);
+
+            return (
+              <section
+                key={section.id}
+                className={`sidebar__section${
+                  isSectionActive ? " sidebar__section--active" : ""
+                }`}
+              >
+                <button
+                  type="button"
+                  className="sidebar__section-toggle"
+                  aria-expanded={isExpanded}
+                  onClick={() =>
+                    setExpandedSections((prev) => ({
+                      ...prev,
+                      [section.id]: !prev[section.id],
+                    }))
+                  }
+                >
+                  <span>{section.label}</span>
+                  <span aria-hidden="true">{isExpanded ? "-" : "+"}</span>
+                </button>
+
+                {isExpanded ? (
+                  <div className="sidebar__section-items">
+                    {section.items.map((item) => (
+                      <NavLink
+                        key={`${section.id}-${item.to}`}
+                        to={item.to}
+                        className={({ isActive }: { isActive: boolean }) =>
+                          `sidebar__link${isActive ? " sidebar__link--active" : ""}`
+                        }
+                      >
+                        <span className="app-icon" aria-hidden="true">
+                          <ShellIcon name={item.icon} />
+                        </span>
+                        <span>{item.label}</span>
+                      </NavLink>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            );
+          })}
+
+          <NavLink
+            to="/settings"
+            className={({ isActive }: { isActive: boolean }) =>
+              `sidebar__link${isActive ? " sidebar__link--active" : ""}`
+            }
+          >
+            <span className="app-icon" aria-hidden="true">
+              <ShellIcon name="settings" />
+            </span>
+            <span>Configuracion</span>
+          </NavLink>
         </nav>
 
         <div className="sidebar__footer">

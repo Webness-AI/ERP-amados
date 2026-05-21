@@ -10,6 +10,7 @@ import {
   getMaterialById,
   listMaterials,
   listProjectMaterialRequirements,
+  listPurchaseRecommendations,
   listPurchaseSuggestions,
   listStockMovements,
   registerStockMovement,
@@ -22,6 +23,7 @@ import {
   createMaterialSchema,
   listMaterialsSchema,
   listProjectMaterialRequirementsSchema,
+  listPurchaseRecommendationsSchema,
   listPurchaseSuggestionsSchema,
   listStockMovementsSchema,
   registerStockMovementSchema,
@@ -223,6 +225,23 @@ stockRouter.post(
       res.status(200).json({
         ok: true,
         data: { requirement },
+      });
+    })().catch(next);
+  },
+);
+
+stockRouter.get(
+  "/purchase-recommendations",
+  authMiddleware,
+  authorizeMiddleware(READ_ROLES),
+  (req, res, next) => {
+    (async () => {
+      const query = listPurchaseRecommendationsSchema.parse(req.query);
+      const result = await listPurchaseRecommendations(query);
+
+      res.status(200).json({
+        ok: true,
+        data: result,
       });
     })().catch(next);
   },

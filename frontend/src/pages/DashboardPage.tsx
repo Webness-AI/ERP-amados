@@ -7,23 +7,7 @@ import {
   type DashboardAlerts,
   type DashboardOverview,
 } from "../services/erp-api";
-
-function formatMoney(value: number): string {
-  return `$ ${value.toLocaleString("es-AR")}`;
-}
-
-function formatDate(value: string): string {
-  if (!value) {
-    return "Sin fecha";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Sin fecha";
-  }
-
-  return date.toLocaleDateString("es-AR");
-}
+import { formatDate, formatMoney } from "../utils/formatters";
 
 export function DashboardPage() {
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
