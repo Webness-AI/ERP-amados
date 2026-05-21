@@ -12,6 +12,7 @@ import { DashboardPage } from "../pages/DashboardPage";
 import { EstadoContablePage } from "../pages/EstadoContablePage";
 import { EstadoResultadoPage } from "../pages/EstadoResultadoPage";
 import { FixedExpensesPage } from "../pages/FixedExpensesPage";
+import { FuturePurchasesPage } from "../pages/FuturePurchasesPage";
 import { LibroMayorPage } from "../pages/LibroMayorPage";
 import { LoginPage } from "../pages/LoginPage";
 import { NotFoundPage } from "../pages/NotFoundPage";
@@ -61,6 +62,10 @@ export const router = createBrowserRouter([
           {
             path: "purchases",
             element: <PurchasesPage />,
+          },
+          {
+            path: "future-purchases",
+            element: <FuturePurchasesPage />,
           },
           {
             path: "production",

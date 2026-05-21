@@ -6,6 +6,7 @@ import { Pagination } from "../components/Pagination";
 
 import {
   createJournalEntryApi,
+  deleteJournalEntryApi,
   getAccountsApi,
   getBalanceSheetReportApi,
   getJournalEntryByIdApi,
@@ -17,21 +18,10 @@ import {
   type DomainEventName,
   type JournalEntryRecord,
 } from "../services/erp-api";
-
-function formatMoney(value: number): string {
-  return `$ ${value.toLocaleString("es-AR")}`;
-}
-
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Sin fecha";
-  }
-
-  return date.toLocaleDateString("es-AR");
-}
+import { formatDate, formatMoney } from "../utils/formatters";
 
 const PAGE_SIZE = 12;
+const DELETE_CONFIRMATION_PHRASE = "eliminar asiento/s contable/s";
 
 const originEventOptions: Array<{
   value: "" | DomainEventName;
@@ -110,6 +100,10 @@ export function AccountingPage() {
   ]);
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
+  const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([]);
+  const [showDeletePopup, setShowDeletePopup] = useState(false);
+  const [deletePhrase, setDeletePhrase] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const canWrite = user?.role === "ADMIN_GENERAL" || user?.role === "ADMIN";
 
@@ -246,6 +240,12 @@ export function AccountingPage() {
     void loadEntryDetail(selectedEntryId);
   }, [selectedEntryId]);
 
+  useEffect(() => {
+    setSelectedEntryIds((current) =>
+      current.filter((id) => rows.some((row) => row._id === id)),
+    );
+  }, [rows]);
+
   const setPage = (next: number) => {
     const params = new URLSearchParams(searchParams);
     params.set("page", String(next));
@@ -263,6 +263,26 @@ export function AccountingPage() {
 
     params.set("page", "1");
     setSearchParams(params);
+  };
+
+  const toggleEntrySelection = (entryId: string) => {
+    setSelectedEntryIds((current) =>
+      current.includes(entryId)
+        ? current.filter((id) => id !== entryId)
+        : [...current, entryId],
+    );
+  };
+
+  const areAllCurrentRowsSelected =
+    rows.length > 0 && rows.every((row) => selectedEntryIds.includes(row._id));
+
+  const toggleSelectAllCurrentRows = () => {
+    if (areAllCurrentRowsSelected) {
+      setSelectedEntryIds([]);
+      return;
+    }
+
+    setSelectedEntryIds(rows.map((row) => row._id));
   };
 
   const addLine = () => {
@@ -389,6 +409,68 @@ export function AccountingPage() {
     }
   };
 
+  const openDeletePopup = () => {
+    setDeletePhrase("");
+    setShowDeletePopup(true);
+  };
+
+  const closeDeletePopup = () => {
+    if (isDeleting) {
+      return;
+    }
+
+    setShowDeletePopup(false);
+    setDeletePhrase("");
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedEntryIds.length === 0) {
+      return;
+    }
+
+    if (deletePhrase.trim() !== DELETE_CONFIRMATION_PHRASE) {
+      setActionError(
+        `Debes escribir exactamente: \"${DELETE_CONFIRMATION_PHRASE}\"`,
+      );
+      return;
+    }
+
+    setIsDeleting(true);
+    setActionError(null);
+
+    try {
+      const idsToDelete = [...selectedEntryIds];
+      const results = await Promise.allSettled(
+        idsToDelete.map((entryId) => deleteJournalEntryApi(entryId)),
+      );
+
+      const failedCount = results.filter(
+        (result) => result.status === "rejected",
+      ).length;
+
+      await loadEntries();
+
+      if (selectedEntryId && idsToDelete.includes(selectedEntryId)) {
+        setSelectedEntryId(null);
+        setSelectedEntry(null);
+      }
+
+      setSelectedEntryIds([]);
+      setShowDeletePopup(false);
+      setDeletePhrase("");
+
+      if (failedCount > 0) {
+        setActionError(
+          `Se eliminaron ${idsToDelete.length - failedCount} asiento(s), pero ${failedCount} fallaron.`,
+        );
+      }
+    } catch {
+      setActionError("No se pudieron eliminar los asientos seleccionados");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <section className="page-content">
       <p className="page-breadcrumb">Administración · Libro Diario</p>
@@ -403,19 +485,192 @@ export function AccountingPage() {
         </div>
         <div className="view-controls">
           {canWrite && (
-            <button
-              className="btn btn-secondary"
-              type="button"
-              onClick={() => setShowEntryForm((current) => !current)}
-            >
-              {showEntryForm ? "Ocultar formulario" : "Nuevo asiento manual"}
-            </button>
+            <>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => setShowEntryForm((current) => !current)}
+              >
+                {showEntryForm ? "Ocultar formulario" : "Nuevo asiento manual"}
+              </button>
+              <button
+                className="btn btn-tertiary"
+                type="button"
+                onClick={toggleSelectAllCurrentRows}
+                disabled={rows.length === 0}
+              >
+                {areAllCurrentRowsSelected ? "Quitar selección" : "Seleccionar todos"}
+              </button>
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={openDeletePopup}
+                disabled={selectedEntryIds.length === 0}
+              >
+                Eliminar seleccionados ({selectedEntryIds.length})
+              </button>
+            </>
           )}
           <button className="btn btn-primary" type="button">
             Exportar reporte
           </button>
         </div>
       </header>
+
+      {canWrite && showEntryForm && (
+        <article className="panel budget-form-panel">
+          <div className="clients-form-header">
+            <div>
+              <h3>Nuevo asiento manual</h3>
+              <p>
+                Validación de doble partida: Debe y Haber deben coincidir.
+              </p>
+            </div>
+          </div>
+
+          <form
+            className="budget-form"
+            onSubmit={(event) => void handleCreateEntry(event)}
+          >
+            <label>
+              <span>Descripción *</span>
+              <input
+                type="text"
+                value={entryDescription}
+                onChange={(event) => setEntryDescription(event.target.value)}
+                required
+              />
+            </label>
+
+            <div className="budget-form__row">
+              <label>
+                <span>Moneda</span>
+                <input
+                  type="text"
+                  value={entryCurrency}
+                  onChange={(event) => setEntryCurrency(event.target.value)}
+                />
+              </label>
+              <label>
+                <span>Fecha (opcional)</span>
+                <input
+                  type="datetime-local"
+                  value={entryDate}
+                  onChange={(event) => setEntryDate(event.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="budget-items">
+              <div className="budget-items__header">
+                <h4>Lineas contables</h4>
+                <button
+                  type="button"
+                  className="btn btn-tertiary"
+                  onClick={addLine}
+                >
+                  + Agregar línea
+                </button>
+              </div>
+
+              {entryLines.map((line, index) => (
+                <div key={`line-${index}`} className="budget-item-row">
+                  <label>
+                    <span>Cuenta</span>
+                    <select
+                      value={line.accountCode}
+                      onChange={(event) =>
+                        updateLine(index, "accountCode", event.target.value)
+                      }
+                      disabled={accountsLoading}
+                    >
+                      <option value="">-- Seleccionar cuenta --</option>
+                      {accounts.map((account) => (
+                        <option key={account.code} value={account.code}>
+                          {account.code} - {account.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Debe</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={line.debit}
+                      onChange={(event) =>
+                        updateLine(index, "debit", Number(event.target.value))
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Haber</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={line.credit}
+                      onChange={(event) =>
+                        updateLine(
+                          index,
+                          "credit",
+                          Number(event.target.value),
+                        )
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Descripción</span>
+                    <input
+                      type="text"
+                      value={line.description}
+                      onChange={(event) =>
+                        updateLine(index, "description", event.target.value)
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => removeLine(index)}
+                    disabled={entryLines.length <= 2}
+                  >
+                    Quitar
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="budget-summary">
+              <span>
+                Debe: {formatMoney(entryTotals.debit)} | Haber:{" "}
+                {formatMoney(entryTotals.credit)}
+              </span>
+              <strong>
+                {entryTotals.isBalanced ? "Balanceado" : "No balanceado"}
+              </strong>
+            </div>
+
+            <div className="clients-form-actions">
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isSaving}
+              >
+                {isSaving ? "Guardando..." : "Registrar asiento"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={resetForm}
+              >
+                Reiniciar
+              </button>
+            </div>
+          </form>
+        </article>
+      )}
 
       <div className="kpi-grid">
         <article className="kpi-card">
@@ -490,10 +745,31 @@ export function AccountingPage() {
       </article>
 
       <article className="panel">
+        <div className="accounting-selection-bar">
+          <label className="accounting-selection-check">
+            <input
+              type="checkbox"
+              checked={areAllCurrentRowsSelected}
+              onChange={toggleSelectAllCurrentRows}
+              disabled={rows.length === 0 || !canWrite}
+            />
+            <span>Seleccionar todos los asientos de la página</span>
+          </label>
+          <strong>{selectedEntryIds.length} seleccionado(s)</strong>
+        </div>
         <div className="table-wrapper">
           <table className="table table-compact accounting-table">
             <thead>
               <tr>
+                <th className="accounting-select-col">
+                  <input
+                    type="checkbox"
+                    checked={areAllCurrentRowsSelected}
+                    onChange={toggleSelectAllCurrentRows}
+                    aria-label="Seleccionar todos"
+                    disabled={rows.length === 0 || !canWrite}
+                  />
+                </th>
                 <th>Asiento</th>
                 <th>Fecha</th>
                 <th>Origen</th>
@@ -506,21 +782,21 @@ export function AccountingPage() {
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={7} className="text-center">
+                  <td colSpan={8} className="text-center">
                     Cargando asientos...
                   </td>
                 </tr>
               )}
               {!isLoading && error && (
                 <tr>
-                  <td colSpan={7} className="text-negative text-center">
+                  <td colSpan={8} className="text-negative text-center">
                     {error}
                   </td>
                 </tr>
               )}
               {!isLoading && !error && rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center">
+                  <td colSpan={8} className="text-center">
                     No hay asientos para mostrar
                   </td>
                 </tr>
@@ -529,6 +805,15 @@ export function AccountingPage() {
                 !error &&
                 rows.map((row) => (
                   <tr key={row._id}>
+                    <td className="accounting-select-col">
+                      <input
+                        type="checkbox"
+                        checked={selectedEntryIds.includes(row._id)}
+                        onChange={() => toggleEntrySelection(row._id)}
+                        aria-label={`Seleccionar asiento ${row._id.slice(-8)}`}
+                        disabled={!canWrite}
+                      />
+                    </td>
                     <td>
                       <div className="project-cell">
                         <strong>{row._id.slice(-8)}</strong>
@@ -585,8 +870,58 @@ export function AccountingPage() {
         </article>
       )}
 
-      <div className="panel-grid budgets-layout">
-        <article className="panel budget-detail-panel">
+      {showDeletePopup ? (
+        <div
+          className="future-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-entries-title"
+          onClick={closeDeletePopup}
+        >
+          <div
+            className="future-modal__content"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="delete-entries-title">Confirmar eliminación de asientos</h2>
+            <p>
+              Para eliminar {selectedEntryIds.length} asiento(s), escribe la frase
+              exacta: <strong>{DELETE_CONFIRMATION_PHRASE}</strong>
+            </p>
+            <label className="accounting-delete-label">
+              <span>Frase de confirmación</span>
+              <input
+                type="text"
+                value={deletePhrase}
+                onChange={(event) => setDeletePhrase(event.target.value)}
+                placeholder={DELETE_CONFIRMATION_PHRASE}
+              />
+            </label>
+            <div className="future-modal__actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={closeDeletePopup}
+                disabled={isDeleting}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void handleDeleteSelected()}
+                disabled={
+                  isDeleting || deletePhrase.trim() !== DELETE_CONFIRMATION_PHRASE
+                }
+              >
+                {isDeleting ? "Eliminando..." : "Eliminar asientos"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="panel-grid">
+        <article className="panel panel-large budget-detail-panel">
           <div className="budget-detail-header">
             <div>
               <h3>Detalle de asiento</h3>
@@ -658,160 +993,6 @@ export function AccountingPage() {
           )}
         </article>
 
-        {canWrite && showEntryForm && (
-          <article className="panel budget-form-panel">
-            <div className="clients-form-header">
-              <div>
-                <h3>Nuevo asiento manual</h3>
-                <p>
-                  Validación de doble partida: Debe y Haber deben coincidir.
-                </p>
-              </div>
-            </div>
-
-            <form
-              className="budget-form"
-              onSubmit={(event) => void handleCreateEntry(event)}
-            >
-              <label>
-                <span>Descripción *</span>
-                <input
-                  type="text"
-                  value={entryDescription}
-                  onChange={(event) => setEntryDescription(event.target.value)}
-                  required
-                />
-              </label>
-
-              <div className="budget-form__row">
-                <label>
-                  <span>Moneda</span>
-                  <input
-                    type="text"
-                    value={entryCurrency}
-                    onChange={(event) => setEntryCurrency(event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Fecha (opcional)</span>
-                  <input
-                    type="datetime-local"
-                    value={entryDate}
-                    onChange={(event) => setEntryDate(event.target.value)}
-                  />
-                </label>
-              </div>
-
-              <div className="budget-items">
-                <div className="budget-items__header">
-                  <h4>Lineas contables</h4>
-                  <button
-                    type="button"
-                    className="btn btn-tertiary"
-                    onClick={addLine}
-                  >
-                    + Agregar línea
-                  </button>
-                </div>
-
-                {entryLines.map((line, index) => (
-                  <div key={`line-${index}`} className="budget-item-row">
-                    <label>
-                      <span>Cuenta</span>
-                      <select
-                        value={line.accountCode}
-                        onChange={(event) =>
-                          updateLine(index, "accountCode", event.target.value)
-                        }
-                        disabled={accountsLoading}
-                      >
-                        <option value="">-- Seleccionar cuenta --</option>
-                        {accounts.map((account) => (
-                          <option key={account.code} value={account.code}>
-                            {account.code} - {account.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      <span>Debe</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={line.debit}
-                        onChange={(event) =>
-                          updateLine(index, "debit", Number(event.target.value))
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>Haber</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={line.credit}
-                        onChange={(event) =>
-                          updateLine(
-                            index,
-                            "credit",
-                            Number(event.target.value),
-                          )
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>Descripción</span>
-                      <input
-                        type="text"
-                        value={line.description}
-                        onChange={(event) =>
-                          updateLine(index, "description", event.target.value)
-                        }
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => removeLine(index)}
-                      disabled={entryLines.length <= 2}
-                    >
-                      Quitar
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <div className="budget-summary">
-                <span>
-                  Debe: {formatMoney(entryTotals.debit)} | Haber:{" "}
-                  {formatMoney(entryTotals.credit)}
-                </span>
-                <strong>
-                  {entryTotals.isBalanced ? "Balanceado" : "No balanceado"}
-                </strong>
-              </div>
-
-              <div className="clients-form-actions">
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={isSaving}
-                >
-                  {isSaving ? "Guardando..." : "Registrar asiento"}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={resetForm}
-                >
-                  Reiniciar
-                </button>
-              </div>
-            </form>
-          </article>
-        )}
       </div>
 
       <div className="panel-grid">

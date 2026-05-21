@@ -1040,6 +1040,41 @@ export type PurchaseSuggestions = {
   };
 };
 
+export type PurchaseRecommendationProject = {
+  projectId: string;
+  projectName: string;
+  status: string;
+  requiredQuantity: number;
+  reservedQuantity: number;
+  consumedQuantity: number;
+  remainingQuantity: number;
+};
+
+export type PurchaseRecommendationItem = {
+  materialId: string;
+  materialName: string;
+  materialSku: string | null;
+  category: MaterialCategory;
+  unit: string;
+  currentStock: number;
+  requiredQuantity: number;
+  reservedQuantity: number;
+  consumedQuantity: number;
+  pendingToPurchase: number;
+  estimatedUnitCost: number;
+  estimatedCost: number;
+  projects: PurchaseRecommendationProject[];
+};
+
+export type PurchaseRecommendations = {
+  items: PurchaseRecommendationItem[];
+  totals: {
+    estimatedTotalCost: number;
+    materialCount: number;
+    projectCount: number;
+  };
+};
+
 type PaginatedResult<T> = {
   items: T[];
   pagination: PaginationMeta;
@@ -1160,6 +1195,23 @@ export async function getPurchaseSuggestionsApi(params?: {
   return response.data.data;
 }
 
+export async function getPurchaseRecommendationsApi(params?: {
+  projectId?: string;
+  search?: string;
+}): Promise<PurchaseRecommendations> {
+  const response = await http.get<ApiEnvelope<PurchaseRecommendations>>(
+    "/stock/purchase-recommendations",
+    {
+      params: {
+        ...(params?.projectId ? { projectId: params.projectId } : {}),
+        ...(params?.search ? { search: params.search } : {}),
+      },
+    },
+  );
+
+  return response.data.data;
+}
+
 export async function getJournalEntriesApi(params: {
   page: number;
   limit: number;
@@ -1233,6 +1285,10 @@ export async function reverseJournalEntryApi(
     { reason },
   );
   return response.data.data.entry;
+}
+
+export async function deleteJournalEntryApi(id: string): Promise<void> {
+  await http.delete(`/accounting/journal-entries/${id}`);
 }
 
 export async function getClientsApi(params: {
