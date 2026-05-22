@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/useAuth";
@@ -293,16 +293,6 @@ export function AppShell() {
       .map((section) => section.id);
   }, [location.pathname]);
 
-  useEffect(() => {
-    setExpandedSections((prev) => {
-      const next = { ...prev };
-      for (const sectionId of activeSectionIds) {
-        next[sectionId] = true;
-      }
-      return next;
-    });
-  }, [activeSectionIds]);
-
   const userName = user
     ? `${user.firstName} ${user.lastName}`.trim()
     : "Usuario Admin";
@@ -329,8 +319,8 @@ export function AppShell() {
           </NavLink>
 
           {navSections.map((section) => {
-            const isExpanded = expandedSections[section.id];
             const isSectionActive = activeSectionIds.includes(section.id);
+            const isExpanded = expandedSections[section.id] || isSectionActive;
 
             return (
               <section

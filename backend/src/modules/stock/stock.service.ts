@@ -8,6 +8,7 @@ import {
   parsePaginationInput,
 } from "../../core/utils/pagination";
 import { ProjectModel } from "../projects/project.model";
+import { SupplierModel } from "../suppliers/supplier.model";
 import {
   MaterialModel,
   type MaterialCategory,
@@ -41,6 +42,10 @@ type PublicMaterial = {
   name: string;
   category: MaterialCategory;
   sku: string | null;
+  supplierId: string | null;
+  type: string | null;
+  color: string | null;
+  note: string | null;
   unit: string;
   minStock: number;
   isActive: boolean;
@@ -124,13 +129,29 @@ function normalizeSku(value?: string | null): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function normalizeNote(value?: string): string | null {
+function normalizeText(value?: string | null): string | null {
   if (!value) {
     return null;
   }
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeNote(value?: string): string | null {
+  return normalizeText(value);
+}
+
+async function assertActiveSupplierExists(supplierId: string): Promise<void> {
+  const exists = await SupplierModel.exists({
+    _id: supplierId,
+    deletedAt: null,
+    isActive: true,
+  });
+
+  if (!exists) {
+    throw new AppError("Supplier not found", 404, "SUPPLIER_NOT_FOUND");
+  }
 }
 
 async function assertUniqueSku(
@@ -265,6 +286,10 @@ function toPublicMaterial(
     name: string;
     category: MaterialCategory;
     sku?: string | null;
+    supplierId?: string | null;
+    type?: string | null;
+    color?: string | null;
+    note?: string | null;
     unit: string;
     minStock: number;
     isActive: boolean;
@@ -278,6 +303,10 @@ function toPublicMaterial(
     name: value.name,
     category: value.category,
     sku: value.sku ?? null,
+    supplierId: value.supplierId ?? null,
+    type: value.type ?? null,
+    color: value.color ?? null,
+    note: value.note ?? null,
     unit: value.unit,
     minStock: value.minStock,
     isActive: value.isActive,
@@ -580,13 +609,30 @@ export async function createMaterial(
   actor: Actor,
 ): Promise<PublicMaterial> {
   const sku = normalizeSku(input.sku);
+  const supplierId = normalizeText(input.supplierId);
+
+  if (!sku) {
+    throw new AppError("SKU required", 400, "SKU_REQUIRED");
+  }
+
+  if (!supplierId) {
+    throw new AppError("Supplier required", 400, "SUPPLIER_REQUIRED");
+  }
+
+  await assertActiveSupplierExists(supplierId);
   await assertUniqueSku(sku);
 
+  const materialName = normalizeText(input.name) ?? sku;
+
   const material = new MaterialModel({
-    name: input.name,
+    name: materialName,
     category: input.category,
     sku,
-    unit: input.unit,
+    supplierId,
+    type: normalizeText(input.type),
+    color: normalizeText(input.color),
+    note: normalizeNote(input.note),
+    unit: normalizeText(input.unit) ?? "u",
     minStock: input.minStock,
     isActive: true,
     createdBy: actor.id,
@@ -630,7 +676,9 @@ export async function listMaterials(query: ListMaterialsInput): Promise<{
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .select("name category sku unit minStock isActive createdAt updatedAt")
+      .select(
+        "name category sku supplierId type color note unit minStock isActive createdAt updatedAt",
+      )
       .lean(),
     MaterialModel.countDocuments(filter),
   ]);
@@ -660,7 +708,9 @@ export async function getMaterialById(id: string): Promise<PublicMaterial> {
     _id: id,
     deletedAt: null,
   })
-    .select("name category sku unit minStock isActive createdAt updatedAt")
+    .select(
+      "name category sku supplierId type color note unit minStock isActive createdAt updatedAt",
+    )
     .lean();
 
   if (!material) {
@@ -698,6 +748,28 @@ export async function updateMaterial(
     updatePayload.sku = normalizeSku(input.sku);
   }
 
+  if (input.supplierId !== undefined) {
+    const supplierId = normalizeText(input.supplierId);
+    if (!supplierId) {
+      throw new AppError("Supplier required", 400, "SUPPLIER_REQUIRED");
+    }
+
+    await assertActiveSupplierExists(supplierId);
+    updatePayload.supplierId = supplierId;
+  }
+
+  if (input.type !== undefined) {
+    updatePayload.type = normalizeText(input.type);
+  }
+
+  if (input.color !== undefined) {
+    updatePayload.color = normalizeText(input.color);
+  }
+
+  if (input.note !== undefined) {
+    updatePayload.note = normalizeNote(input.note);
+  }
+
   if (input.unit !== undefined) {
     updatePayload.unit = input.unit;
   }
@@ -719,6 +791,10 @@ export async function updateMaterial(
         name: 1,
         category: 1,
         sku: 1,
+        supplierId: 1,
+        type: 1,
+        color: 1,
+        note: 1,
         unit: 1,
         minStock: 1,
         isActive: 1,

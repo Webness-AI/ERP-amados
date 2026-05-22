@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../auth/useAuth";
@@ -53,7 +53,7 @@ export function SuppliersPage() {
   const activeOnly = searchParams.get("activeOnly") !== "false";
   const safePage = Number.isFinite(page) && page > 0 ? page : 1;
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
@@ -71,11 +71,17 @@ export function SuppliersPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [activeOnly, safePage, search]);
 
   useEffect(() => {
-    void load();
-  }, [safePage, search, activeOnly]);
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [load]);
 
   const stats = useMemo(() => {
     const total = rows.length;

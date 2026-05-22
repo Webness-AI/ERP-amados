@@ -295,10 +295,20 @@ export async function createProjectFromApprovedBudget(
         );
       }
 
+      if (!budget.clientId) {
+        throw new AppError(
+          "Budget without client cannot create project",
+          409,
+          "BUDGET_CLIENT_REQUIRED",
+        );
+      }
+
+      const clientId = budget.clientId;
+
       const project = await ProjectModel.create(
         [
           {
-            clientId: budget.clientId,
+            clientId,
             budgetId: budget._id,
             name: input.name,
             description: normalizeOptionalString(input.description),

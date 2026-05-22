@@ -122,8 +122,8 @@ export function ProductionPage() {
 
         setRows(data.items);
         setTotalPages(Math.max(data.pagination.totalPages, 1));
-        if (!selectedOrderId && data.items.length > 0) {
-          setSelectedOrderId(data.items[0]._id);
+        if (data.items.length > 0) {
+          setSelectedOrderId((current) => current ?? data.items[0]._id);
         }
       } catch {
         if (!active) {
@@ -144,12 +144,6 @@ export function ProductionPage() {
       active = false;
     };
   }, [safePage, search, status, priority]);
-
-  useEffect(() => {
-    if (!selectedOrderId && rows.length > 0) {
-      setSelectedOrderId(rows[0]._id);
-    }
-  }, [rows, selectedOrderId]);
 
   const selectedOrder = useMemo(
     () => rows.find((order) => order._id === selectedOrderId) ?? null,

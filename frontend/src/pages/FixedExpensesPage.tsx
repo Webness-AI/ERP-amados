@@ -110,8 +110,8 @@ export function FixedExpensesPage() {
         }
         setRows(data.items);
         setTotalPages(Math.max(data.pagination.totalPages, 1));
-        if (!selectedExpenseId && data.items.length > 0) {
-          setSelectedExpenseId(data.items[0]._id);
+        if (data.items.length > 0) {
+          setSelectedExpenseId((current) => current ?? data.items[0]._id);
         }
       } catch {
         if (!active) {
@@ -132,12 +132,6 @@ export function FixedExpensesPage() {
       active = false;
     };
   }, [safePage, search, status, dueOnly, overdueOnly]);
-
-  useEffect(() => {
-    if (!selectedExpenseId && rows.length > 0) {
-      setSelectedExpenseId(rows[0]._id);
-    }
-  }, [rows, selectedExpenseId]);
 
   const selectedExpense = useMemo(
     () => rows.find((expense) => expense._id === selectedExpenseId) ?? null,
