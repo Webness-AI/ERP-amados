@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../auth/useAuth";
@@ -142,7 +142,7 @@ export function AccountingPage() {
     return { debit, credit, isBalanced: debit === credit && debit > 0 };
   }, [entryLines]);
 
-  const loadEntries = async () => {
+  const loadEntries = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
@@ -185,20 +185,26 @@ export function AccountingPage() {
         setSelectedEntry(null);
       }
 
-      if (
-        entriesData.items.length > 0 &&
-        (!selectedEntryId ||
-          !entriesData.items.some((entry) => entry._id === selectedEntryId))
-      ) {
-        const nextId = entriesData.items[0]._id;
-        setSelectedEntryId(nextId);
+      if (entriesData.items.length > 0) {
+        setSelectedEntryId((currentSelectedEntryId) => {
+          if (
+            !currentSelectedEntryId ||
+            !entriesData.items.some(
+              (entry) => entry._id === currentSelectedEntryId,
+            )
+          ) {
+            return entriesData.items[0]._id;
+          }
+
+          return currentSelectedEntryId;
+        });
       }
     } catch {
       setError("No se pudo cargar el libro diario");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [from, originEvent, safePage, to]);
 
   const loadEntryDetail = async (id: string) => {
     setSelectedEntryId(id);
@@ -216,35 +222,42 @@ export function AccountingPage() {
   };
 
   useEffect(() => {
-    void loadAccounts();
+    const timer = window.setTimeout(() => {
+      void loadAccounts();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {
-    let active = true;
-
-    void loadEntries().then(() => {
-      if (!active) {
-        return;
-      }
-    });
+    const timer = window.setTimeout(() => {
+      void loadEntries();
+    }, 0);
 
     return () => {
-      active = false;
+      window.clearTimeout(timer);
     };
-  }, [safePage, from, to, originEvent]);
+  }, [loadEntries]);
 
   useEffect(() => {
     if (!selectedEntryId) {
       return;
     }
-    void loadEntryDetail(selectedEntryId);
+    const timer = window.setTimeout(() => {
+      void loadEntryDetail(selectedEntryId);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, [selectedEntryId]);
 
-  useEffect(() => {
-    setSelectedEntryIds((current) =>
-      current.filter((id) => rows.some((row) => row._id === id)),
-    );
-  }, [rows]);
+  const visibleSelectedEntryIds = useMemo(
+    () => selectedEntryIds.filter((id) => rows.some((row) => row._id === id)),
+    [selectedEntryIds, rows],
+  );
 
   const setPage = (next: number) => {
     const params = new URLSearchParams(searchParams);
@@ -274,7 +287,8 @@ export function AccountingPage() {
   };
 
   const areAllCurrentRowsSelected =
-    rows.length > 0 && rows.every((row) => selectedEntryIds.includes(row._id));
+    rows.length > 0 &&
+    rows.every((row) => visibleSelectedEntryIds.includes(row._id));
 
   const toggleSelectAllCurrentRows = () => {
     if (areAllCurrentRowsSelected) {
@@ -424,13 +438,13 @@ export function AccountingPage() {
   };
 
   const handleDeleteSelected = async () => {
-    if (selectedEntryIds.length === 0) {
+    if (visibleSelectedEntryIds.length === 0) {
       return;
     }
 
     if (deletePhrase.trim() !== DELETE_CONFIRMATION_PHRASE) {
       setActionError(
-        `Debes escribir exactamente: \"${DELETE_CONFIRMATION_PHRASE}\"`,
+        `Debes escribir exactamente: "${DELETE_CONFIRMATION_PHRASE}"`,
       );
       return;
     }
@@ -439,7 +453,7 @@ export function AccountingPage() {
     setActionError(null);
 
     try {
-      const idsToDelete = [...selectedEntryIds];
+      const idsToDelete = [...visibleSelectedEntryIds];
       const results = await Promise.allSettled(
         idsToDelete.map((entryId) => deleteJournalEntryApi(entryId)),
       );
@@ -455,7 +469,9 @@ export function AccountingPage() {
         setSelectedEntry(null);
       }
 
-      setSelectedEntryIds([]);
+      setSelectedEntryIds((current) =>
+        current.filter((id) => !idsToDelete.includes(id)),
+      );
       setShowDeletePopup(false);
       setDeletePhrase("");
 
@@ -505,9 +521,9 @@ export function AccountingPage() {
                 className="btn btn-ghost"
                 type="button"
                 onClick={openDeletePopup}
-                disabled={selectedEntryIds.length === 0}
+                disabled={visibleSelectedEntryIds.length === 0}
               >
-                Eliminar seleccionados ({selectedEntryIds.length})
+                Eliminar seleccionados ({visibleSelectedEntryIds.length})
               </button>
             </>
           )}

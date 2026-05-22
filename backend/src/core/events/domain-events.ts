@@ -1,5 +1,10 @@
 export const DOMAIN_EVENTS = {
   PRESUPUESTO_APROBADO: "presupuesto_aprobado",
+  PRESUPUESTO_ACEPTADO: "presupuesto_aceptado",
+  PRESUPUESTO_ACEPTADO_CON_DESCUENTO: "presupuesto_aceptado_con_descuento",
+  PRESUPUESTO_DESCUENTO_OFRECIDO: "presupuesto_descuento_ofrecido",
+  PRESUPUESTO_RECHAZADO_FINAL: "presupuesto_rechazado_final",
+  CLIENTE_CREADO_DESDE_PRESUPUESTO: "cliente_creado_desde_presupuesto",
   MATERIAL_RESERVADO: "material_reservado",
   MATERIAL_ASIGNADO_A_PROYECTO: "material_asignado_a_proyecto",
   STOCK_BAJO_DETECTADO: "stock_bajo_detectado",

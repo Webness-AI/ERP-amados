@@ -63,6 +63,49 @@ function getNextDueDate(
   return next;
 }
 
+function monthlyFactorForFrequency(
+  frequency: FixedExpense["frequency"],
+): number {
+  if (frequency === FIXED_EXPENSE_FREQUENCIES.MENSUAL) {
+    return 1;
+  }
+
+  if (frequency === FIXED_EXPENSE_FREQUENCIES.BIMESTRAL) {
+    return 0.5;
+  }
+
+  if (frequency === FIXED_EXPENSE_FREQUENCIES.TRIMESTRAL) {
+    return 1 / 3;
+  }
+
+  return 1 / 12;
+}
+
+export async function calculateMonthlyFixedExpenseTotal(): Promise<number> {
+  const expenses = await FixedExpenseModel.find({
+    deletedAt: null,
+    status: FIXED_EXPENSE_STATUSES.ACTIVO,
+  }).lean();
+
+  const monthlyTotal = expenses.reduce((acc, expense) => {
+    const monthlyAmount = expense.amount * monthlyFactorForFrequency(expense.frequency);
+    return acc + monthlyAmount;
+  }, 0);
+
+  return Number(monthlyTotal.toFixed(2));
+}
+
+export async function calculateFixedCostPerHour(): Promise<number> {
+  const monthlyTotal = await calculateMonthlyFixedExpenseTotal();
+  const laborHoursPerMonth = 26 * 8;
+
+  if (monthlyTotal <= 0) {
+    return 0;
+  }
+
+  return Number((monthlyTotal / laborHoursPerMonth).toFixed(2));
+}
+
 export async function createFixedExpense(
   input: CreateFixedExpenseInput,
   actor: Actor,

@@ -1,97 +1,163 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { RequireAuth } from "../auth/RequireAuth";
-import { AppShell } from "../layouts/AppShell";
-import { AccountingPage } from "../pages/AccountingPage";
-import { BalancesPage } from "../pages/BalancesPage";
-import { BudgetsPage } from "../pages/BudgetsPage";
-import { CashBanksPage } from "../pages/CashBanksPage";
-import { ClientsPage } from "../pages/ClientsPage";
-import { CollectionsPage } from "../pages/CollectionsPage";
-import { DashboardPage } from "../pages/DashboardPage";
-import { EstadoContablePage } from "../pages/EstadoContablePage";
-import { EstadoResultadoPage } from "../pages/EstadoResultadoPage";
-import { FixedExpensesPage } from "../pages/FixedExpensesPage";
-import { FuturePurchasesPage } from "../pages/FuturePurchasesPage";
-import { LibroMayorPage } from "../pages/LibroMayorPage";
-import { LoginPage } from "../pages/LoginPage";
-import { NotFoundPage } from "../pages/NotFoundPage";
-import { PurchasesPage } from "../pages/PurchasesPage";
-import { ProductionPage } from "../pages/ProductionPage";
-import { ProjectsPage } from "../pages/ProjectsPage";
-import { SettingsPage } from "../pages/SettingsPage";
-import { StockPage } from "../pages/StockPage";
-import { SuppliersPage } from "../pages/SuppliersPage";
 
 export const router = createBrowserRouter([
   {
     path: "/login",
-    element: <LoginPage />,
+    lazy: async () => {
+      const module = await import("../pages/LoginPage");
+      return { Component: module.LoginPage };
+    },
   },
   {
     element: <RequireAuth />,
     children: [
       {
         path: "/",
-        element: <AppShell />,
+        lazy: async () => {
+          const module = await import("../layouts/AppShell");
+          return { Component: module.AppShell };
+        },
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
-          { path: "dashboard", element: <DashboardPage /> },
-          { path: "projects", element: <ProjectsPage /> },
-          { path: "stock", element: <StockPage /> },
+          {
+            path: "dashboard",
+            lazy: async () => {
+              const module = await import("../pages/DashboardPage");
+              return { Component: module.DashboardPage };
+            },
+          },
+          {
+            path: "projects",
+            lazy: async () => {
+              const module = await import("../pages/ProjectsPage");
+              return { Component: module.ProjectsPage };
+            },
+          },
+          {
+            path: "stock",
+            lazy: async () => {
+              const module = await import("../pages/StockPage");
+              return { Component: module.StockPage };
+            },
+          },
           {
             path: "accounting",
             element: <Navigate to="/accounting/diario" replace />,
           },
-          { path: "accounting/diario", element: <AccountingPage /> },
-          { path: "accounting/libro-mayor", element: <LibroMayorPage /> },
+          {
+            path: "accounting/diario",
+            lazy: async () => {
+              const module = await import("../pages/AccountingPage");
+              return { Component: module.AccountingPage };
+            },
+          },
+          {
+            path: "accounting/libro-mayor",
+            lazy: async () => {
+              const module = await import("../pages/LibroMayorPage");
+              return { Component: module.LibroMayorPage };
+            },
+          },
           {
             path: "accounting/estado-resultado",
-            element: <EstadoResultadoPage />,
+            lazy: async () => {
+              const module = await import("../pages/EstadoResultadoPage");
+              return { Component: module.EstadoResultadoPage };
+            },
           },
           {
             path: "accounting/estado-contable",
-            element: <EstadoContablePage />,
+            lazy: async () => {
+              const module = await import("../pages/EstadoContablePage");
+              return { Component: module.EstadoContablePage };
+            },
           },
-          { path: "accounting/balances", element: <BalancesPage /> },
-          { path: "clients", element: <ClientsPage /> },
+          {
+            path: "accounting/balances",
+            lazy: async () => {
+              const module = await import("../pages/BalancesPage");
+              return { Component: module.BalancesPage };
+            },
+          },
+          {
+            path: "clients",
+            lazy: async () => {
+              const module = await import("../pages/ClientsPage");
+              return { Component: module.ClientsPage };
+            },
+          },
           {
             path: "budgets",
-            element: <BudgetsPage />,
+            lazy: async () => {
+              const module = await import("../pages/BudgetsPage");
+              return { Component: module.BudgetsPage };
+            },
           },
           {
             path: "purchases",
-            element: <PurchasesPage />,
+            lazy: async () => {
+              const module = await import("../pages/PurchasesPage");
+              return { Component: module.PurchasesPage };
+            },
           },
           {
             path: "future-purchases",
-            element: <FuturePurchasesPage />,
+            lazy: async () => {
+              const module = await import("../pages/FuturePurchasesPage");
+              return { Component: module.FuturePurchasesPage };
+            },
           },
           {
             path: "production",
-            element: <ProductionPage />,
+            lazy: async () => {
+              const module = await import("../pages/ProductionPage");
+              return { Component: module.ProductionPage };
+            },
           },
           {
             path: "cash-banks",
-            element: <CashBanksPage />,
+            lazy: async () => {
+              const module = await import("../pages/CashBanksPage");
+              return { Component: module.CashBanksPage };
+            },
           },
           {
             path: "fixed-expenses",
-            element: <FixedExpensesPage />,
+            lazy: async () => {
+              const module = await import("../pages/FixedExpensesPage");
+              return { Component: module.FixedExpensesPage };
+            },
           },
           {
             path: "suppliers",
-            element: <SuppliersPage />,
+            lazy: async () => {
+              const module = await import("../pages/SuppliersPage");
+              return { Component: module.SuppliersPage };
+            },
           },
           {
             path: "collections",
-            element: <CollectionsPage />,
+            lazy: async () => {
+              const module = await import("../pages/CollectionsPage");
+              return { Component: module.CollectionsPage };
+            },
           },
           {
             path: "settings",
-            element: <SettingsPage />,
+            lazy: async () => {
+              const module = await import("../pages/SettingsPage");
+              return { Component: module.SettingsPage };
+            },
           },
-          { path: "*", element: <NotFoundPage /> },
+          {
+            path: "*",
+            lazy: async () => {
+              const module = await import("../pages/NotFoundPage");
+              return { Component: module.NotFoundPage };
+            },
+          },
         ],
       },
     ],

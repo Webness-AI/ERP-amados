@@ -1,5 +1,5 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../auth/useAuth";
 import { Pagination } from "../components/Pagination";
@@ -37,6 +37,7 @@ const paymentMethodOptions: CollectionPaymentMethod[] = [
 ];
 
 export function CollectionsPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const canWrite = user?.role === "ADMIN_GENERAL" || user?.role === "ADMIN";
 
@@ -64,9 +65,13 @@ export function CollectionsPage() {
   const status = (searchParams.get("status") ?? "") as CollectionStatus | "";
   const dueOnly = searchParams.get("dueOnly") === "true";
   const overdueOnly = searchParams.get("overdueOnly") === "true";
+  const contextClientId = searchParams.get("clientId") ?? "";
+  const contextProjectId = searchParams.get("projectId") ?? "";
+  const focusCollectionId = searchParams.get("collectionId") ?? "";
+  const contextBudgetId = searchParams.get("budgetId") ?? "";
   const safePage = Number.isFinite(page) && page > 0 ? page : 1;
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
@@ -74,6 +79,8 @@ export function CollectionsPage() {
       const data = await getCollectionsApi({
         page: safePage,
         limit: PAGE_SIZE,
+        ...(contextClientId ? { clientId: contextClientId } : {}),
+        ...(contextProjectId ? { projectId: contextProjectId } : {}),
         ...(status ? { status } : {}),
         ...(dueOnly ? { dueOnly: true } : {}),
         ...(overdueOnly ? { overdueOnly: true } : {}),
@@ -86,11 +93,41 @@ export function CollectionsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [
+    contextClientId,
+    contextProjectId,
+    dueOnly,
+    overdueOnly,
+    safePage,
+    status,
+  ]);
 
   useEffect(() => {
-    void load();
-  }, [safePage, status, dueOnly, overdueOnly]);
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [load]);
+
+  useEffect(() => {
+    if (!focusCollectionId || rows.length === 0) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const highlightedRow = document.querySelector<HTMLTableRowElement>(
+        ".table-row-context",
+      );
+      highlightedRow?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [focusCollectionId, rows]);
 
   const stats = useMemo(() => {
     const total = rows.length;
@@ -134,6 +171,16 @@ export function CollectionsPage() {
       params.delete("overdueOnly");
     }
 
+    params.set("page", "1");
+    setSearchParams(params);
+  };
+
+  const clearContextFilters = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete("budgetId");
+    params.delete("clientId");
+    params.delete("projectId");
+    params.delete("collectionId");
     params.set("page", "1");
     setSearchParams(params);
   };
@@ -294,6 +341,50 @@ export function CollectionsPage() {
         </article>
       )}
 
+      {(contextBudgetId || contextClientId || contextProjectId || focusCollectionId) && (
+        <article className="panel panel--warning collections-context-panel">
+          <h3>Contexto desde Presupuestos</h3>
+          <div className="collections-context-chips">
+            <span className="budget-chip budget-chip--draft">
+              Presupuesto: {contextBudgetId ? contextBudgetId.slice(-8) : "-"}
+            </span>
+            <span className="budget-chip budget-chip--sent">
+              Cliente: {contextClientId ? contextClientId.slice(-8) : "-"}
+            </span>
+            <span className="budget-chip budget-chip--ordered">
+              Proyecto: {contextProjectId ? contextProjectId.slice(-8) : "-"}
+            </span>
+            <span className="budget-chip budget-chip--parcial">
+              Cobranza: {focusCollectionId ? focusCollectionId.slice(-8) : "-"}
+            </span>
+          </div>
+          <div className="future-modal__actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={!contextBudgetId}
+              onClick={() => {
+                if (!contextBudgetId) {
+                  return;
+                }
+
+                const query = new URLSearchParams({ budgetId: contextBudgetId });
+                navigate(`/budgets?${query.toString()}`);
+              }}
+            >
+              Volver a presupuesto
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={clearContextFilters}
+            >
+              Limpiar contexto
+            </button>
+          </div>
+        </article>
+      )}
+
       <article className="panel">
         <div className="budget-toolbar">
           <label className="clients-toggle">
@@ -359,14 +450,23 @@ export function CollectionsPage() {
                 {!isLoading && !error && rows.length === 0 && (
                   <tr>
                     <td colSpan={8} className="text-center">
-                      No hay cobranzas para mostrar
+                      {contextClientId || contextProjectId
+                        ? "No hay cobranzas para el contexto seleccionado"
+                        : "No hay cobranzas para mostrar"}
                     </td>
                   </tr>
                 )}
                 {!isLoading &&
                   !error &&
                   rows.map((row) => (
-                    <tr key={row._id}>
+                    <tr
+                      key={row._id}
+                      className={
+                        focusCollectionId && row._id === focusCollectionId
+                          ? "table-row-context"
+                          : undefined
+                      }
+                    >
                       <td>{row.clientId.slice(-8)}</td>
                       <td>{row.projectId ? row.projectId.slice(-8) : "-"}</td>
                       <td>

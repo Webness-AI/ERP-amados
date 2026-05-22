@@ -18,9 +18,13 @@ const stockMovementTypeSchema = z.enum([
 ]);
 
 export const createMaterialSchema = z.object({
-  name: z.string().trim().min(2).max(180),
+  sku: z.string().trim().min(1).max(60),
+  name: z.string().trim().min(2).max(180).optional(),
+  supplierId: z.string().trim().min(1).max(60),
   category: materialCategorySchema,
-  sku: z.string().trim().min(1).max(60).optional(),
+  type: z.string().trim().min(1).max(80).optional(),
+  color: z.string().trim().min(1).max(80).optional(),
+  note: z.string().trim().max(1000).optional(),
   unit: z.string().trim().min(1).max(30).default("u"),
   minStock: z.number().min(0).default(0),
 });
@@ -30,6 +34,10 @@ export const updateMaterialSchema = z
     name: z.string().trim().min(2).max(180).optional(),
     category: materialCategorySchema.optional(),
     sku: z.string().trim().min(1).max(60).nullable().optional(),
+    supplierId: z.string().trim().min(1).max(60).optional(),
+    type: z.string().trim().min(1).max(80).optional(),
+    color: z.string().trim().min(1).max(80).optional(),
+    note: z.string().trim().max(1000).optional(),
     unit: z.string().trim().min(1).max(30).optional(),
     minStock: z.number().min(0).optional(),
     isActive: z.boolean().optional(),
