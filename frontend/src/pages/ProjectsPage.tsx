@@ -5,8 +5,10 @@ import { useAuth } from "../auth/useAuth";
 import { Pagination } from "../components/Pagination";
 
 import {
+  deleteProjectApi,
   getProjectByIdApi,
   getProjectsApi,
+  updateProjectApi,
   updateProjectStatusApi,
   type ProjectItem,
   type ProjectStatus,
@@ -58,6 +60,17 @@ function getPaymentLabel(status: ProjectStatus): string {
 }
 
 const PAGE_SIZE = 8;
+const PROJECT_STATUS_OPTIONS: ProjectStatus[] = [
+  "CONSULTA",
+  "PRESUPUESTADO",
+  "APROBADO",
+  "COMPRADO",
+  "PRODUCCION",
+  "INSTALACION",
+  "PAUSADO",
+  "FINALIZADO",
+  "CANCELADO",
+];
 
 export function ProjectsPage() {
   const { user } = useAuth();
@@ -83,20 +96,8 @@ export function ProjectsPage() {
 
   const canWrite = user?.role === "ADMIN_GENERAL" || user?.role === "ADMIN";
 
-  const statusOptions: ProjectStatus[] = [
-    "CONSULTA",
-    "PRESUPUESTADO",
-    "APROBADO",
-    "COMPRADO",
-    "PRODUCCION",
-    "INSTALACION",
-    "PAUSADO",
-    "FINALIZADO",
-    "CANCELADO",
-  ];
-
   const statusCounts = useMemo(() => {
-    return statusOptions.reduce(
+    return PROJECT_STATUS_OPTIONS.reduce(
       (acc, currentStatus) => ({
         ...acc,
         [currentStatus]: rows.filter((row) => row.status === currentStatus)
@@ -126,12 +127,19 @@ export function ProjectsPage() {
 
         setRows(data.items);
         setTotalPages(Math.max(data.pagination.totalPages, 1));
-        if (
-          data.items.length > 0 &&
-          (!selectedProjectId ||
-            !data.items.some((project) => project._id === selectedProjectId))
-        ) {
-          setSelectedProjectId(data.items[0]._id);
+        if (data.items.length > 0) {
+          setSelectedProjectId((currentSelectedProjectId) => {
+            if (
+              !currentSelectedProjectId ||
+              !data.items.some(
+                (project) => project._id === currentSelectedProjectId,
+              )
+            ) {
+              return data.items[0]._id;
+            }
+
+            return currentSelectedProjectId;
+          });
         }
         if (data.items.length === 0) {
           setSelectedProjectId(null);
@@ -230,6 +238,104 @@ export function ProjectsPage() {
     } catch {
       setActionError("No se pudo actualizar el estado del proyecto");
     }
+  };
+
+  const handleEditProject = async (row: ProjectItem) => {
+    const nextName = window.prompt("Nombre del proyecto", row.name);
+    if (nextName === null) {
+      return;
+    }
+
+    const trimmedName = nextName.trim();
+    if (trimmedName.length < 2) {
+      setActionError("El nombre del proyecto debe tener al menos 2 caracteres");
+      return;
+    }
+
+    const nextDescription = window.prompt(
+      "Descripcion del proyecto",
+      row.description ?? "",
+    );
+    if (nextDescription === null) {
+      return;
+    }
+
+    const defaultDeliveryDate = row.deliveryDate
+      ? row.deliveryDate.slice(0, 10)
+      : "";
+    const nextDeliveryDate = window.prompt(
+      "Fecha de entrega (YYYY-MM-DD, vacio para quitar)",
+      defaultDeliveryDate,
+    );
+    if (nextDeliveryDate === null) {
+      return;
+    }
+
+    setActionError(null);
+
+    try {
+      const payload = {
+        name: trimmedName,
+        ...(nextDescription.trim()
+          ? { description: nextDescription.trim() }
+          : { description: "" }),
+        ...(nextDeliveryDate.trim()
+          ? {
+              deliveryDate: new Date(
+                `${nextDeliveryDate.trim()}T00:00:00.000Z`,
+              ).toISOString(),
+            }
+          : {}),
+      };
+
+      const updated = await updateProjectApi(row._id, payload);
+      await refreshRows();
+
+      if (selectedProjectId === row._id) {
+        setSelectedProject(updated);
+        setNextStatus(updated.status);
+      }
+    } catch {
+      setActionError("No se pudo editar el proyecto");
+    }
+  };
+
+  const handleDeleteProject = async (row: ProjectItem) => {
+    if (!window.confirm(`Eliminar ${row.name}?`)) {
+      return;
+    }
+
+    setActionError(null);
+
+    try {
+      await deleteProjectApi(row._id);
+      await refreshRows();
+
+      if (selectedProjectId === row._id) {
+        setSelectedProjectId(null);
+        setSelectedProject(null);
+        setNextStatus("");
+      }
+    } catch {
+      setActionError("No se pudo eliminar el proyecto");
+    }
+  };
+
+  const handleProjectAction = async (
+    row: ProjectItem,
+    action: "view" | "edit" | "delete",
+  ) => {
+    if (action === "view") {
+      setSelectedProjectId(row._id);
+      return;
+    }
+
+    if (action === "edit") {
+      await handleEditProject(row);
+      return;
+    }
+
+    await handleDeleteProject(row);
   };
 
   return (
@@ -348,7 +454,7 @@ export function ProjectsPage() {
               }
             >
               <option value="">Todos</option>
-              {statusOptions.map((option) => (
+              {PROJECT_STATUS_OPTIONS.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -440,14 +546,42 @@ export function ProjectsPage() {
                         </div>
                       </td>
                       <td>
-                        <div className="budget-actions">
+                        <div className="row-action-buttons">
                           <button
                             type="button"
-                            className="btn btn-tertiary"
-                            onClick={() => setSelectedProjectId(row._id)}
+                            className="btn btn-tertiary btn-emoji-action"
+                            title="Ver detalle"
+                            aria-label="Ver detalle del proyecto"
+                            onClick={() => void handleProjectAction(row, "view")}
                           >
-                            Ver detalle
+                            👁️
                           </button>
+                          {canWrite && (
+                            <button
+                              type="button"
+                              className="btn btn-tertiary btn-emoji-action"
+                              title="Editar"
+                              aria-label="Editar proyecto"
+                              onClick={() =>
+                                void handleProjectAction(row, "edit")
+                              }
+                            >
+                              ✏️
+                            </button>
+                          )}
+                          {canWrite && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-emoji-action"
+                              title="Eliminar"
+                              aria-label="Eliminar proyecto"
+                              onClick={() =>
+                                void handleProjectAction(row, "delete")
+                              }
+                            >
+                              🗑️
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -511,7 +645,7 @@ export function ProjectsPage() {
                     setNextStatus(event.target.value as ProjectStatus)
                   }
                 >
-                  {statusOptions.map((option) => (
+                  {PROJECT_STATUS_OPTIONS.map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>

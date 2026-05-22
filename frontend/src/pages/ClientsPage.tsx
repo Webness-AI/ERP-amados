@@ -206,6 +206,18 @@ export function ClientsPage() {
     }
   };
 
+  const handleClientAction = async (
+    client: ClientItem,
+    action: "edit" | "delete",
+  ) => {
+    if (action === "edit") {
+      startEdit(client);
+      return;
+    }
+
+    await handleDelete(client);
+  };
+
   return (
     <section className="page-content">
       <p className="page-breadcrumb">Comercial · Clientes</p>
@@ -340,20 +352,26 @@ export function ClientsPage() {
                         </span>
                       </td>
                       <td>
-                        <div className="clients-actions">
+                        <div className="row-action-buttons">
                           <button
                             type="button"
-                            className="btn btn-tertiary"
-                            onClick={() => startEdit(client)}
+                            className="btn btn-tertiary btn-emoji-action"
+                            title="Editar"
+                            aria-label="Editar cliente"
+                            onClick={() => void handleClientAction(client, "edit")}
                           >
-                            Editar
+                            ✏️
                           </button>
                           <button
                             type="button"
-                            className="btn btn-ghost"
-                            onClick={() => void handleDelete(client)}
+                            className="btn btn-ghost btn-emoji-action"
+                            title="Eliminar"
+                            aria-label="Eliminar cliente"
+                            onClick={() =>
+                              void handleClientAction(client, "delete")
+                            }
                           >
-                            Eliminar
+                            🗑️
                           </button>
                         </div>
                       </td>

@@ -69,8 +69,6 @@ export function LibroMayorPage() {
     let active = true;
 
     if (!accountCode) {
-      setReport(null);
-      setError(null);
       return;
     }
 
@@ -131,6 +129,8 @@ export function LibroMayorPage() {
     [accounts, accountCode],
   );
 
+  const visibleError = accountCode ? error : null;
+
   return (
     <section className="page-section">
       <header className="section-header">
@@ -164,7 +164,7 @@ export function LibroMayorPage() {
         </label>
       </AccountingReportFilters>
 
-      {error ? <p className="text-danger">{error}</p> : null}
+      {visibleError ? <p className="text-danger">{visibleError}</p> : null}
 
       {!accountCode ? (
         <article className="panel">

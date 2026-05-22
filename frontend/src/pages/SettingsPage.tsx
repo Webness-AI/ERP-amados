@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Pagination } from "../components/Pagination";
 
@@ -126,7 +126,7 @@ export function SettingsPage() {
   const [accountForm, setAccountForm] =
     useState<AccountFormState>(emptyAccountForm);
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setUsersLoading(true);
     setUsersError(null);
 
@@ -147,9 +147,9 @@ export function SettingsPage() {
     } finally {
       setUsersLoading(false);
     }
-  };
+  }, [usersActiveOnly, usersPage, usersRole, usersSearch]);
 
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     setAccountsLoading(true);
     setAccountsError(null);
 
@@ -171,21 +171,33 @@ export function SettingsPage() {
     } finally {
       setAccountsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    void loadUsers();
-  }, [usersPage, usersSearch, usersRole, usersActiveOnly]);
-
-  useEffect(() => {
-    void loadAccounts();
   }, [
-    accountsPage,
-    accountsSearch,
-    accountsNature,
-    accountsResultClassification,
     accountsActiveOnly,
+    accountsNature,
+    accountsPage,
+    accountsResultClassification,
+    accountsSearch,
   ]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadUsers();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [loadUsers]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadAccounts();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [loadAccounts]);
 
   const updateUsersFilter = (next: {
     search?: string;

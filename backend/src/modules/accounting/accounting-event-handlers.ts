@@ -3,12 +3,32 @@ import {
   type DomainEvent,
 } from "../../core/events/domain-events";
 import { eventBus } from "../../core/events/event-bus";
+import { BudgetModel } from "../budgets/budget.model";
 import { postEventDrivenJournalEntry } from "./journal-entry.service";
 
 type BudgetApprovedPayload = {
   budgetId?: string;
   clientId?: string;
   total?: number;
+};
+
+type BudgetAcceptedPayload = {
+  budgetId?: string;
+  clientId?: string;
+  total?: number;
+  createdClient?: boolean;
+};
+
+type BudgetDiscountOfferedPayload = {
+  budgetId?: string;
+  originalTotal?: number;
+  discountedTotal?: number;
+  discountPercentage?: number;
+};
+
+type BudgetFinalRejectedPayload = {
+  budgetId?: string;
+  reason?: string;
 };
 
 type PurchaseReceivedPayload = {
@@ -43,6 +63,28 @@ function readPositiveAmount(value: unknown): number {
 
 function safeActorId(event: DomainEvent): string {
   return event.actorId ?? "system";
+}
+
+async function readApprovedBudgetTotals(
+  budgetId: string,
+): Promise<{ total: number; discountedTotal: number | null } | null> {
+  const budget = await BudgetModel.findOne({
+    _id: budgetId,
+    deletedAt: null,
+  })
+    .select("approvedAt total discountedTotal")
+    .lean();
+
+  if (!budget || !budget.approvedAt) {
+    return null;
+  }
+
+  return {
+    total: readPositiveAmount(budget.total),
+    discountedTotal: budget.discountedTotal
+      ? readPositiveAmount(budget.discountedTotal)
+      : null,
+  };
 }
 
 function subscribeSafely<TPayload>(
@@ -90,6 +132,112 @@ async function handleBudgetApproved(
     originEvent: DOMAIN_EVENTS.PRESUPUESTO_APROBADO,
     originEntityType: "budget",
     ...(originEntityId ? { originEntityId } : {}),
+    ...(correlationId ? { correlationId } : {}),
+  });
+}
+
+async function handleBudgetAccepted(
+  event: DomainEvent<BudgetAcceptedPayload>,
+): Promise<void> {
+  // PRESUPUESTO_APROBADO already creates the principal accounting entry.
+  // This handler is intentionally left without journal posting to avoid duplicates.
+  const correlationId = event.correlationId?.trim();
+  if (!correlationId) {
+    return;
+  }
+}
+
+async function handleBudgetDiscountOffered(
+  event: DomainEvent<BudgetDiscountOfferedPayload>,
+): Promise<void> {
+  const budgetId = event.payload.budgetId?.trim();
+  if (!budgetId) {
+    return;
+  }
+
+  const totals = await readApprovedBudgetTotals(budgetId);
+  if (!totals) {
+    return;
+  }
+
+  const originalTotal = readPositiveAmount(event.payload.originalTotal);
+  const discountedTotal = readPositiveAmount(event.payload.discountedTotal);
+  const fallbackDiscounted = totals.discountedTotal ?? totals.total;
+  const effectiveOriginal = originalTotal > 0 ? originalTotal : totals.total;
+  const effectiveDiscounted =
+    discountedTotal > 0 ? discountedTotal : fallbackDiscounted;
+  const adjustment = Number((effectiveOriginal - effectiveDiscounted).toFixed(2));
+
+  if (adjustment <= 0) {
+    return;
+  }
+
+  const correlationId = event.correlationId?.trim();
+
+  await postEventDrivenJournalEntry({
+    description: `Oferta de descuento presupuesto ${budgetId}`,
+    lines: [
+      {
+        accountCode: "VENTAS",
+        debit: adjustment,
+        credit: 0,
+        description: "Ajuste por descuento comercial ofrecido",
+      },
+      {
+        accountCode: "ANTICIPOS_CLIENTES",
+        debit: 0,
+        credit: adjustment,
+        description: "Ajuste de anticipo por descuento ofrecido",
+      },
+    ],
+    actorId: safeActorId(event),
+    originEvent: DOMAIN_EVENTS.PRESUPUESTO_DESCUENTO_OFRECIDO,
+    originEntityType: "budget",
+    originEntityId: budgetId,
+    ...(correlationId ? { correlationId } : {}),
+  });
+}
+
+async function handleBudgetFinalRejected(
+  event: DomainEvent<BudgetFinalRejectedPayload>,
+): Promise<void> {
+  const budgetId = event.payload.budgetId?.trim();
+  if (!budgetId) {
+    return;
+  }
+
+  const totals = await readApprovedBudgetTotals(budgetId);
+  if (!totals) {
+    return;
+  }
+
+  const reversalAmount = totals.discountedTotal ?? totals.total;
+  if (reversalAmount <= 0) {
+    return;
+  }
+
+  const correlationId = event.correlationId?.trim();
+
+  await postEventDrivenJournalEntry({
+    description: `Rechazo final presupuesto ${budgetId}`,
+    lines: [
+      {
+        accountCode: "VENTAS",
+        debit: reversalAmount,
+        credit: 0,
+        description: "Reversion de ingreso por rechazo final",
+      },
+      {
+        accountCode: "ANTICIPOS_CLIENTES",
+        debit: 0,
+        credit: reversalAmount,
+        description: "Reversion de anticipo por rechazo final",
+      },
+    ],
+    actorId: safeActorId(event),
+    originEvent: DOMAIN_EVENTS.PRESUPUESTO_RECHAZADO_FINAL,
+    originEntityType: "budget",
+    originEntityId: budgetId,
     ...(correlationId ? { correlationId } : {}),
   });
 }
@@ -242,6 +390,18 @@ export function initializeAccountingEventHandlers(): void {
   subscribeSafely<BudgetApprovedPayload>(
     DOMAIN_EVENTS.PRESUPUESTO_APROBADO,
     handleBudgetApproved,
+  );
+  subscribeSafely<BudgetAcceptedPayload>(
+    DOMAIN_EVENTS.PRESUPUESTO_ACEPTADO,
+    handleBudgetAccepted,
+  );
+  subscribeSafely<BudgetDiscountOfferedPayload>(
+    DOMAIN_EVENTS.PRESUPUESTO_DESCUENTO_OFRECIDO,
+    handleBudgetDiscountOffered,
+  );
+  subscribeSafely<BudgetFinalRejectedPayload>(
+    DOMAIN_EVENTS.PRESUPUESTO_RECHAZADO_FINAL,
+    handleBudgetFinalRejected,
   );
   subscribeSafely<PurchaseReceivedPayload>(
     DOMAIN_EVENTS.COMPRA_RECIBIDA,

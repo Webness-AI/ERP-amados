@@ -19,6 +19,10 @@ export type Material = AuditableFields & {
   name: string;
   category: MaterialCategory;
   sku?: string | null;
+  supplierId?: string | null;
+  type?: string | null;
+  color?: string | null;
+  note?: string | null;
   unit: string;
   minStock: number;
   isActive: boolean;
@@ -47,6 +51,30 @@ const materialSchema = new Schema<Material>(
       default: null,
       maxlength: 60,
     },
+    supplierId: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 60,
+    },
+    type: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 80,
+    },
+    color: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 80,
+    },
+    note: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 1000,
+    },
     unit: {
       type: String,
       required: true,
@@ -72,6 +100,7 @@ const materialSchema = new Schema<Material>(
 
 materialSchema.index({ name: 1 });
 materialSchema.index({ category: 1, isActive: 1, deletedAt: 1 });
+materialSchema.index({ supplierId: 1, deletedAt: 1 });
 materialSchema.index({ sku: 1 }, { unique: true, sparse: true });
 
 export type MaterialDocument = HydratedDocument<Material>;

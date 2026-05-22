@@ -1,9 +1,53 @@
 import { http } from "./http";
+import axios from "axios";
 
 type ApiEnvelope<T> = {
   ok: true;
   data: T;
 };
+
+export type ApiErrorInfo = {
+  status?: number;
+  code?: string;
+  message: string;
+  isNetworkError: boolean;
+};
+
+export function getApiErrorInfo(
+  error: unknown,
+  fallbackMessage = "No se pudo completar la operación",
+): ApiErrorInfo {
+  if (axios.isAxiosError(error)) {
+    if (!error.response) {
+      return {
+        message:
+          "No se pudo conectar con el backend. Verifica conectividad y configuración de API.",
+        isNetworkError: true,
+      };
+    }
+
+    const responseData = error.response.data as
+      | {
+          error?: {
+            code?: string;
+            message?: string;
+          };
+        }
+      | undefined;
+
+    return {
+      status: error.response.status,
+      code: responseData?.error?.code,
+      message: responseData?.error?.message ?? fallbackMessage,
+      isNetworkError: false,
+    };
+  }
+
+  return {
+    message: fallbackMessage,
+    isNetworkError: false,
+  };
+}
 
 export type PaginationMeta = {
   page: number;
@@ -43,18 +87,34 @@ export type BudgetItem = BudgetItemInput & {
 
 export type BudgetRecord = {
   _id: string;
-  clientId: string;
+  clientId?: string | null;
+  prospectName?: string | null;
+  prospectContactName?: string | null;
+  prospectEmail?: string | null;
+  prospectPhone?: string | null;
+  prospectNotes?: string | null;
   title: string;
   description?: string | null;
   currency: string;
   items: BudgetItem[];
+  laborCostPerHour?: number;
+  laborCost?: number;
+  projectCost?: number;
+  marginAmount?: number;
   subtotal: number;
   total: number;
+  rejectionCount?: number;
+  discountPercentage?: number;
+  discountedTotal?: number | null;
+  discountOfferedAt?: string | null;
+  rejectedAt?: string | null;
+  lastRejectionReason?: string | null;
   status: BudgetStatus;
   versionGroupId: string;
   version: number;
   parentBudgetId?: string | null;
   projectId?: string | null;
+  collectionId?: string | null;
   approvedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -304,6 +364,13 @@ export type ProjectItem = {
   updatedAt: string;
 };
 
+export type ProjectUpdateInput = {
+  name?: string;
+  description?: string;
+  status?: ProjectStatus;
+  deliveryDate?: string;
+};
+
 export type ProjectStatus =
   | "CONSULTA"
   | "PRESUPUESTADO"
@@ -321,9 +388,41 @@ export type MaterialItem = {
   id: string;
   name: string;
   category: MaterialCategory;
+  sku: string | null;
+  supplierId: string | null;
+  type: string | null;
+  color: string | null;
+  note: string | null;
+  unit: string;
   currentStock: number;
   minStock: number;
   isLowStock: boolean;
+  isActive: boolean;
+};
+
+export type MaterialCreateInput = {
+  sku: string;
+  name?: string;
+  supplierId: string;
+  category: MaterialCategory;
+  type?: string;
+  color?: string;
+  note?: string;
+  unit?: string;
+  minStock: number;
+};
+
+export type MaterialUpdateInput = {
+  sku?: string;
+  name?: string;
+  supplierId?: string;
+  category?: MaterialCategory;
+  type?: string;
+  color?: string;
+  note?: string;
+  unit?: string;
+  minStock?: number;
+  isActive?: boolean;
 };
 
 export type DomainEventName =
@@ -473,8 +572,20 @@ export async function getBudgetsApi(params: {
   return response.data.data;
 }
 
+export async function getBudgetByIdApi(id: string): Promise<BudgetRecord> {
+  const response = await http.get<ApiEnvelope<{ budget: BudgetRecord }>>(
+    `/budgets/${id}`,
+  );
+  return response.data.data.budget;
+}
+
 export async function createBudgetApi(input: {
-  clientId: string;
+  clientId?: string;
+  prospectName?: string;
+  prospectContactName?: string;
+  prospectEmail?: string;
+  prospectPhone?: string;
+  prospectNotes?: string;
   title: string;
   description?: string;
   currency?: string;
@@ -518,6 +629,178 @@ export async function updateBudgetStatusApi(
 
 export async function deleteBudgetApi(id: string): Promise<void> {
   await http.delete(`/budgets/${id}`);
+}
+
+export type BudgetMaterialPriceSuggestion = {
+  materialId: string;
+  lastKnownUnitCost: number;
+  lastKnownCostDate: string | null;
+  lastPurchaseUnitCost: number;
+  lastPurchaseDate: string | null;
+  averageCostLast30Days: number;
+  estimatedCost: number;
+};
+
+export type BudgetRecalculateResult = {
+  original: {
+    laborCostPerHour: number;
+    laborCost: number;
+    subtotal: number;
+    projectCost: number;
+    marginAmount: number;
+    finalPrice: number;
+  };
+  recalculated: {
+    laborCostPerHour: number;
+    laborCost: number;
+    subtotal: number;
+    projectCost: number;
+    marginAmount: number;
+    finalPrice: number;
+  };
+  differences: {
+    laborCostPerHourDiff: number;
+    laborCostDiff: number;
+    subtotalDiff: number;
+    projectCostDiff: number;
+    marginAmountDiff: number;
+    finalPriceDiff: number;
+  };
+  auditId: string;
+};
+
+export async function getBudgetMaterialPriceSuggestionApi(
+  materialId: string,
+): Promise<BudgetMaterialPriceSuggestion> {
+  const response = await http.get<ApiEnvelope<BudgetMaterialPriceSuggestion>>(
+    `/budgets/materials/${materialId}/price-suggestion`,
+  );
+  return response.data.data;
+}
+
+export async function recalculateBudgetPricingApi(
+  id: string,
+): Promise<BudgetRecalculateResult> {
+  const response = await http.post<ApiEnvelope<BudgetRecalculateResult>>(
+    `/budgets/${id}/recalculate`,
+    {},
+  );
+  return response.data.data;
+}
+
+export async function applyBudgetRecalculationApi(
+  id: string,
+): Promise<{ budget: BudgetRecord } & Omit<BudgetRecalculateResult, "original" | "recalculated">> {
+  const response = await http.post<
+    ApiEnvelope<
+      {
+        budget: BudgetRecord;
+      } & Omit<BudgetRecalculateResult, "original" | "recalculated">
+    >
+  >(`/budgets/${id}/recalculate/apply`, {});
+  return response.data.data;
+}
+
+export type AcceptBudgetInput = {
+  clientName?: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
+  notes?: string;
+  projectName?: string;
+  projectDescription?: string;
+  projectDeliveryDate?: string;
+  collectionDueDate?: string;
+  collectionNotes?: string;
+};
+
+export type AcceptBudgetResult = {
+  budget: BudgetRecord;
+  clientId: string;
+  projectId: string;
+  collectionId: string;
+  createdClient: boolean;
+};
+
+export type BudgetPricingAuditSource = {
+  type: string;
+  sourceId?: string | null;
+  description?: string | null;
+  quantity?: number | null;
+  unitPrice?: number | null;
+  subtotal: number;
+  lastKnownUnitCost?: number | null;
+  lastPurchaseUnitCost?: number | null;
+  lastPurchaseDate?: string | null;
+};
+
+export type BudgetPricingAuditEntry = {
+  _id: string;
+  budgetId: string;
+  budgetVersion: number;
+  reason: "CREATE" | "REVISE" | "RECALCULATE";
+  marginType: string;
+  laborHours: number;
+  shippingCost: number;
+  monthlyFixedTotal: number;
+  laborCostPerHour: number;
+  fixedExpenseIds: string[];
+  sources: BudgetPricingAuditSource[];
+  subtotal: number;
+  commissionPercent: number;
+  commissionAmount: number;
+  bonusPercent: number;
+  bonusAmount: number;
+  projectCost: number;
+  marginPercent: number;
+  marginAmount: number;
+  finalPrice: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function acceptBudgetApi(
+  id: string,
+  input: AcceptBudgetInput = {},
+): Promise<AcceptBudgetResult> {
+  const response = await http.post<ApiEnvelope<AcceptBudgetResult>>(
+    `/budgets/${id}/accept`,
+    input,
+  );
+  return response.data.data;
+}
+
+export async function acceptBudgetWithDiscountApi(
+  id: string,
+  input: AcceptBudgetInput = {},
+): Promise<AcceptBudgetResult> {
+  const response = await http.post<ApiEnvelope<AcceptBudgetResult>>(
+    `/budgets/${id}/accept-with-discount`,
+    input,
+  );
+  return response.data.data;
+}
+
+export async function rejectBudgetApi(
+  id: string,
+  reason?: string,
+): Promise<BudgetRecord> {
+  const response = await http.post<ApiEnvelope<{ budget: BudgetRecord }>>(
+    `/budgets/${id}/reject`,
+    {
+      ...(reason?.trim() ? { reason: reason.trim() } : {}),
+    },
+  );
+  return response.data.data.budget;
+}
+
+export async function getBudgetPricingAuditTrailApi(
+  id: string,
+): Promise<BudgetPricingAuditEntry[]> {
+  const response = await http.get<
+    ApiEnvelope<{ trail: BudgetPricingAuditEntry[] }>
+  >(`/budgets/${id}/audit-trail`);
+  return response.data.data.trail;
 }
 
 export async function getPurchasesApi(params: {
@@ -1165,6 +1448,21 @@ export async function updateProjectStatusApi(
   return response.data.data.project;
 }
 
+export async function updateProjectApi(
+  id: string,
+  input: ProjectUpdateInput,
+): Promise<ProjectItem> {
+  const response = await http.patch<ApiEnvelope<{ project: ProjectItem }>>(
+    `/projects/${id}`,
+    input,
+  );
+  return response.data.data.project;
+}
+
+export async function deleteProjectApi(id: string): Promise<void> {
+  await http.delete(`/projects/${id}`);
+}
+
 export async function getMaterialsApi(params: {
   page: number;
   limit: number;
@@ -1181,6 +1479,27 @@ export async function getMaterialsApi(params: {
     },
   );
   return response.data.data;
+}
+
+export async function createMaterialApi(
+  input: MaterialCreateInput,
+): Promise<MaterialItem> {
+  const response = await http.post<ApiEnvelope<{ material: MaterialItem }>>(
+    "/stock/materials",
+    input,
+  );
+  return response.data.data.material;
+}
+
+export async function updateMaterialApi(
+  id: string,
+  input: MaterialUpdateInput,
+): Promise<MaterialItem> {
+  const response = await http.patch<ApiEnvelope<{ material: MaterialItem }>>(
+    `/stock/materials/${id}`,
+    input,
+  );
+  return response.data.data.material;
 }
 
 export async function getPurchaseSuggestionsApi(params?: {
