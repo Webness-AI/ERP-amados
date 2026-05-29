@@ -159,7 +159,7 @@ export function FuturePurchasesPage() {
   };
 
   return (
-    <section className="page-content">
+    <section className="page-content future-purchases-page">
       <p className="page-breadcrumb">Inventario y Flujo · Compras Futuras</p>
 
       <header className="page-header">

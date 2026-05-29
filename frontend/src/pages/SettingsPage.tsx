@@ -898,9 +898,7 @@ export function SettingsPage() {
             </article>
             <article className="kpi-card">
               <h3>Resultados</h3>
-              <strong>
-                accountStats.byType.RESULTADO ?? 0
-              </strong>
+              <strong>{accountStats.byType.RESULTADO ?? 0}</strong>
               <small>Naturaleza RESULTADO</small>
             </article>
           </div>
