@@ -104,7 +104,7 @@ p {
 
 .sidebar {
   background: var(--surface-elevated);
-  border-right: 1px solid rgba(139, 145, 155, 0.34);
+  box-shadow: inset -1px 0 0 rgba(139, 145, 155, 0.34);
   padding: 22px 12px 14px;
   display: grid;
   grid-template-rows: auto 1fr auto;
@@ -137,7 +137,7 @@ p {
   &__section {
     display: grid;
     gap: 4px;
-    border: 1px solid rgba(139, 145, 155, 0.15);
+    box-shadow: 0 0 0 1px rgba(139, 145, 155, 0.15);
     border-radius: var(--radius-sm);
     padding: 6px;
 
@@ -178,7 +178,7 @@ p {
     padding: 8px 10px;
     border-radius: var(--radius-sm);
     color: rgba(193, 199, 210, 0.9);
-    border: 1px solid transparent;
+    box-shadow: 0 0 0 1px transparent;
     font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.02em;
@@ -210,7 +210,7 @@ p {
     display: grid;
     gap: 12px;
     padding: 10px;
-    border-top: 1px solid rgba(139, 145, 155, 0.2);
+    box-shadow: inset 0 1px 0 rgba(139, 145, 155, 0.2);
   }
 
   &__cta {
@@ -237,7 +237,7 @@ p {
     display: flex;
     align-items: center;
     gap: 8px;
-    border: 1px solid rgba(139, 145, 155, 0.25);
+    box-shadow: 0 0 0 1px rgba(139, 145, 155, 0.25);
     background: rgba(20, 20, 20, 0.8);
     border-radius: var(--radius-sm);
     padding: 8px;
@@ -268,7 +268,7 @@ p {
     font-size: 11px;
     font-weight: 700;
     color: #cbe1ff;
-    border: 1px solid rgba(161, 201, 255, 0.35);
+    box-shadow: 0 0 0 1px rgba(161, 201, 255, 0.35);
     background: radial-gradient(circle at 30% 30%, #2a3f58, #151a20 70%);
   }
 }
@@ -285,7 +285,7 @@ p {
   &__content {
     width: min(560px, 100%);
     background: var(--surface-elevated);
-    border: 1px solid rgba(139, 145, 155, 0.4);
+    box-shadow: 0 0 0 1px rgba(139, 145, 155, 0.4);
     border-radius: var(--radius-lg);
     padding: var(--space-5);
     display: grid;
@@ -309,7 +309,7 @@ p {
     gap: var(--space-3);
 
     div {
-      border: 1px solid rgba(139, 145, 155, 0.22);
+      box-shadow: 0 0 0 1px rgba(139, 145, 155, 0.22);
       border-radius: var(--radius-sm);
       padding: 10px 12px;
       display: grid;
@@ -333,7 +333,7 @@ p {
   &__table-wrap {
     max-height: 320px;
     overflow: auto;
-    border: 1px solid rgba(139, 145, 155, 0.22);
+    box-shadow: 0 0 0 1px rgba(139, 145, 155, 0.22);
     border-radius: var(--radius-sm);
   }
 
@@ -346,7 +346,7 @@ p {
       padding: 10px 12px;
       text-align: left;
       vertical-align: top;
-      border-bottom: 1px solid rgba(139, 145, 155, 0.14);
+      box-shadow: inset 0 -1px 0 rgba(139, 145, 155, 0.14);
       font-size: 13px;
     }
 
@@ -404,7 +404,7 @@ p {
 
 .topbar {
   background: var(--surface-elevated);
-  border-bottom: 1px solid rgba(139, 145, 155, 0.34);
+  box-shadow: inset 0 -1px 0 rgba(139, 145, 155, 0.34);
   display: flex;
   gap: var(--space-4);
   align-items: center;
@@ -416,7 +416,7 @@ p {
     display: flex;
     align-items: center;
     gap: 8px;
-    border: 1px solid rgba(139, 145, 155, 0.35);
+    box-shadow: 0 0 0 1px rgba(139, 145, 155, 0.35);
     background: #101010;
     border-radius: var(--radius-sm);
     padding: 9px 12px;
@@ -497,6 +497,18 @@ p {
   min-width: 0;
 }
 
+.page-content > .page-breadcrumb {
+  margin-bottom: calc(var(--space-2) * -1);
+}
+
+.future-purchases-page {
+  padding-top: var(--space-3);
+}
+
+.future-purchases-page > .page-breadcrumb {
+  margin-bottom: calc(var(--space-3) * -1);
+}
+
 .page-header {
   display: flex;
   justify-content: space-between;
@@ -517,7 +529,7 @@ p {
 
 .kpi-card {
   background: var(--surface-elevated);
-  border: 1px solid var(--outline);
+  box-shadow: 0 0 0 1px var(--outline);
   border-radius: var(--radius-md);
   padding: var(--space-4);
   display: grid;
@@ -557,11 +569,12 @@ p {
 
 .panel {
   background: var(--surface-elevated);
-  border: 1px solid var(--outline);
+  box-shadow: 0 0 0 1px var(--outline);
   border-radius: var(--radius-md);
   padding: var(--space-4);
   display: grid;
   gap: var(--space-3);
+  align-content: start;
 
   h3 {
     font-size: 16px;
@@ -605,7 +618,7 @@ p {
   th,
   td {
     padding: 10px;
-    border-bottom: 1px solid var(--outline);
+    box-shadow: inset 0 -1px 0 var(--outline);
     text-align: left;
   }
 
@@ -716,7 +729,7 @@ p {
 }
 
 .btn {
-  border: 1px solid transparent;
+  box-shadow: 0 0 0 1px transparent;
   border-radius: var(--radius-sm);
   padding: 10px 14px;
   font-weight: 600;
@@ -861,7 +874,7 @@ p {
 
 .quick-action-item {
   width: 100%;
-  border: 1px solid rgba(161, 201, 255, 0.22);
+  box-shadow: 0 0 0 1px rgba(161, 201, 255, 0.22);
   background: rgba(13, 56, 92, 0.5);
   border-radius: var(--radius-sm);
   padding: 11px 12px;
@@ -895,7 +908,7 @@ p {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(161, 201, 255, 0.22);
+  box-shadow: 0 0 0 1px rgba(161, 201, 255, 0.22);
   background: rgba(161, 201, 255, 0.14);
   display: inline-flex;
   align-items: center;
@@ -922,7 +935,7 @@ p {
 
 .dashboard-footer {
   margin-top: var(--space-2);
-  border-top: 1px solid rgba(139, 145, 155, 0.24);
+  box-shadow: inset 0 1px 0 rgba(139, 145, 155, 0.24);
   padding-top: 12px;
   display: flex;
   gap: 16px;
@@ -945,7 +958,7 @@ p {
   th,
   td {
     padding: 8px 12px;
-    border-bottom: 1px solid var(--outline);
+    box-shadow: inset 0 -1px 0 var(--outline);
     text-align: left;
   }
 
@@ -988,7 +1001,7 @@ p {
   align-items: flex-start;
   gap: var(--space-2);
   padding: var(--space-2) 0;
-  border-bottom: 1px solid rgba(139, 145, 155, 0.1);
+  box-shadow: inset 0 -1px 0 rgba(139, 145, 155, 0.1);
 
   &:last-child {
     border-bottom: none;
@@ -1045,7 +1058,7 @@ p {
 
 .view-switch {
   display: inline-flex;
-  border: 1px solid rgba(139, 145, 155, 0.34);
+  box-shadow: 0 0 0 1px rgba(139, 145, 155, 0.34);
   border-radius: var(--radius-sm);
   overflow: hidden;
 
@@ -1053,7 +1066,7 @@ p {
     min-height: 30px;
     padding: 0 14px;
     border: 0;
-    border-right: 1px solid rgba(139, 145, 155, 0.3);
+    box-shadow: inset -1px 0 0 rgba(139, 145, 155, 0.3);
     background: rgba(24, 24, 24, 0.85);
     color: var(--on-surface-variant);
     font-size: 12px;
@@ -1083,7 +1096,7 @@ p {
   gap: 8px;
   min-height: 34px;
   padding: 0 13px;
-  border: 1px solid rgba(139, 145, 155, 0.38);
+  box-shadow: 0 0 0 1px rgba(139, 145, 155, 0.38);
   border-radius: 999px;
   background: rgba(24, 24, 24, 0.9);
   color: var(--on-surface-variant);
@@ -1115,7 +1128,7 @@ p {
   margin-bottom: var(--space-4);
   overflow-x: auto;
   padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--outline);
+  box-shadow: inset 0 -1px 0 var(--outline);
 
   &::-webkit-scrollbar {
     height: 8px;
@@ -1129,7 +1142,7 @@ p {
 
 .filter-tab {
   padding: 10px 16px;
-  border: 1px solid transparent;
+  box-shadow: 0 0 0 1px transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--on-surface-variant);
@@ -1172,7 +1185,7 @@ p {
 
 .progress-bar {
   background: var(--surface-base);
-  border: 1px solid var(--outline);
+  box-shadow: 0 0 0 1px var(--outline);
   border-radius: var(--radius-sm);
   height: 6px;
   overflow: hidden;
@@ -1211,7 +1224,7 @@ p {
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid rgba(139, 145, 155, 0.34);
+  box-shadow: 0 0 0 1px rgba(139, 145, 155, 0.34);
   cursor: pointer;
   padding: 0;
   color: var(--on-surface-variant);
@@ -1241,7 +1254,7 @@ p {
   align-items: center;
   gap: var(--space-2);
   padding: 10px 14px;
-  border: 1px solid var(--outline);
+  box-shadow: 0 0 0 1px var(--outline);
   border-radius: var(--radius-sm);
   background: var(--surface-base);
   color: var(--on-surface-variant);
@@ -1311,7 +1324,7 @@ p {
 
   input {
     width: 100%;
-    border: 1px solid rgba(139, 145, 155, 0.35);
+    box-shadow: 0 0 0 1px rgba(139, 145, 155, 0.35);
     border-radius: var(--radius-sm);
     background: #101010;
     color: var(--on-surface);
@@ -1323,6 +1336,7 @@ p {
 
 .clients-layout {
   grid-template-columns: 1.6fr 1fr;
+  align-items: start;
 }
 
 .clients-toolbar {
@@ -1341,7 +1355,7 @@ p {
   input,
   select {
     background: var(--surface-base);
-    border: 1px solid var(--outline);
+    box-shadow: 0 0 0 1px var(--outline);
     border-radius: var(--radius-sm);
     color: var(--on-surface);
     min-height: 42px;
@@ -1404,6 +1418,7 @@ p {
 
 .clients-form-panel {
   min-width: 0;
+  align-content: start;
 }
 
 .clients-form-header {
@@ -1432,7 +1447,7 @@ p {
   input,
   textarea {
     background: var(--surface-base);
-    border: 1px solid var(--outline);
+    box-shadow: 0 0 0 1px var(--outline);
     border-radius: var(--radius-sm);
     color: var(--on-surface);
     padding: 10px 12px;
@@ -1495,7 +1510,7 @@ p {
   margin: 0;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(137, 184, 222, 0.34);
+  box-shadow: 0 0 0 1px rgba(137, 184, 222, 0.34);
   background: rgba(0, 86, 150, 0.16);
   color: var(--on-surface);
   font-size: 13px;
@@ -1522,7 +1537,7 @@ p {
     display: grid;
     gap: 4px;
     padding: var(--space-3);
-    border: 1px solid var(--outline);
+    box-shadow: 0 0 0 1px var(--outline);
     border-radius: var(--radius-sm);
     background: var(--surface-base);
   }
@@ -1547,7 +1562,7 @@ p {
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3);
-  border: 1px solid var(--outline);
+  box-shadow: 0 0 0 1px var(--outline);
   border-radius: var(--radius-sm);
   background: var(--surface-base);
 }
@@ -1732,7 +1747,7 @@ p {
   &--high,
   &--medium,
   &--low {
-    border: 1px solid rgba(161, 201, 255, 0.14);
+    box-shadow: 0 0 0 1px rgba(161, 201, 255, 0.14);
   }
 
   &--income,
@@ -1748,7 +1763,7 @@ p {
   min-height: 34px;
   width: 100%;
   background: var(--surface-base);
-  border: 1px solid rgba(139, 145, 155, 0.45);
+  box-shadow: 0 0 0 1px rgba(139, 145, 155, 0.45);
   border-radius: var(--radius-sm);
   color: var(--on-surface);
   padding: 6px 10px;
@@ -1779,7 +1794,7 @@ p {
   textarea,
   select {
     background: var(--surface-base);
-    border: 1px solid var(--outline);
+    box-shadow: 0 0 0 1px var(--outline);
     border-radius: var(--radius-sm);
     color: var(--on-surface);
     min-height: 42px;
@@ -1808,7 +1823,7 @@ p {
   gap: var(--space-3);
   align-items: end;
   padding: var(--space-3);
-  border: 1px solid var(--outline);
+  box-shadow: 0 0 0 1px var(--outline);
   border-radius: var(--radius-sm);
   background: var(--surface-base);
 
@@ -1819,7 +1834,7 @@ p {
   input,
   select {
     background: var(--surface-base);
-    border: 1px solid var(--outline);
+    box-shadow: 0 0 0 1px var(--outline);
     border-radius: var(--radius-sm);
     color: var(--on-surface);
     min-height: 42px;
@@ -1858,7 +1873,7 @@ p {
   display: grid;
   gap: var(--space-2);
   padding: var(--space-3);
-  border: 1px solid var(--outline);
+  box-shadow: 0 0 0 1px var(--outline);
   border-radius: var(--radius-sm);
   background: var(--surface-base);
 
@@ -1889,7 +1904,7 @@ p {
   gap: var(--space-3);
   align-items: end;
   padding: var(--space-3);
-  border: 1px solid var(--outline);
+  box-shadow: 0 0 0 1px var(--outline);
   border-radius: var(--radius-sm);
   background: var(--surface-base);
 
@@ -1915,7 +1930,7 @@ p {
 
   input {
     background: var(--surface-base);
-    border: 1px solid var(--outline);
+    box-shadow: 0 0 0 1px var(--outline);
     border-radius: var(--radius-sm);
     color: var(--on-surface);
     min-height: 40px;
@@ -1948,7 +1963,7 @@ p {
   display: grid;
   gap: var(--space-4);
   background: var(--surface-elevated);
-  border: 1px solid var(--outline);
+  box-shadow: 0 0 0 1px var(--outline);
   border-radius: var(--radius-md);
   padding: var(--space-5);
 
@@ -1980,7 +1995,7 @@ p {
 
   input {
     background: var(--surface-base);
-    border: 1px solid var(--outline);
+    box-shadow: 0 0 0 1px var(--outline);
     border-radius: var(--radius-sm);
     color: var(--on-surface);
     padding: 10px 12px;
@@ -2073,7 +2088,7 @@ p {
   .sidebar {
     padding: var(--space-4);
     border-right: 0;
-    border-bottom: 1px solid var(--outline);
+    box-shadow: inset 0 -1px 0 var(--outline);
     grid-template-rows: auto auto auto;
 
     &__nav {
@@ -2246,7 +2261,7 @@ p {
   input,
   select {
     width: 100%;
-    border: 1px solid rgba(139, 145, 155, 0.35);
+    box-shadow: 0 0 0 1px rgba(139, 145, 155, 0.35);
     border-radius: var(--radius-sm);
     background: #101010;
     color: var(--on-surface);
@@ -2308,5 +2323,395 @@ p {
 
   .page-filters__grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Borderless cleanup: remove 1px separator-like shadows and native control borders. */
+.sidebar,
+.sidebar__section,
+.sidebar__link,
+.sidebar__footer,
+.sidebar__user-card,
+.sidebar__user-avatar,
+.future-modal__content,
+.future-modal__summary div,
+.future-modal__table-wrap,
+.future-modal__table th,
+.future-modal__table td,
+.topbar,
+.topbar__search,
+.kpi-card,
+.panel,
+.table th,
+.table td,
+.table-compact th,
+.table-compact td,
+.activity-item,
+.view-switch,
+.view-switch__item,
+.pill-filter,
+.filter-tabs,
+.filter-tab,
+.progress-bar,
+.btn,
+.btn-icon,
+.accounting-filter,
+.accounting-delete-label input,
+.clients-search input,
+.clients-toggle select,
+.clients-form input,
+.clients-form textarea,
+.budget-action-inline,
+.budget-detail__meta div,
+.budget-detail__item,
+.budget-summary,
+.settings-select,
+.budget-form input,
+.budget-form textarea,
+.budget-form select,
+.budget-item-row,
+.budget-item-row input,
+.budget-item-row select,
+.production-progress-card,
+.purchase-receive-item,
+.purchase-receive-item__input input,
+.auth-card,
+.auth-form input,
+.page-filters input,
+.page-filters select {
+  box-shadow: none !important;
+}
+
+button,
+input,
+select,
+textarea {
+  border: 0;
+}
+
+.app-shell *,
+.app-shell *::before,
+.app-shell *::after {
+  border-width: 0 !important;
+  border-style: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Responsive typography tuning */
+body {
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.btn {
+  font-size: 14px;
+}
+
+@media (max-width: 1280px) {
+  body {
+    font-size: 14px;
+  }
+
+  .sidebar__brand h1 {
+    font-size: 27px;
+    line-height: 31px;
+  }
+
+  .page-header h2 {
+    font-size: 25px;
+  }
+
+  .kpi-card strong {
+    font-size: 22px;
+  }
+
+  .panel h3 {
+    font-size: 15px;
+  }
+
+  .auth-card h1 {
+    font-size: 24px;
+  }
+}
+
+@media (max-width: 920px) {
+  body {
+    font-size: 13px;
+  }
+
+  .sidebar__brand h1 {
+    font-size: 24px;
+    line-height: 28px;
+  }
+
+  .sidebar__link,
+  .topbar__search input,
+  .accounting-filter,
+  .accounting-selection-check,
+  .clients-search,
+  .clients-toggle,
+  .clients-form label,
+  .budget-form label,
+  .budget-item-row__total,
+  .page-filters input,
+  .page-filters select,
+  .table,
+  .table-compact {
+    font-size: 12px;
+  }
+
+  .page-header h2 {
+    font-size: 22px;
+  }
+
+  .kpi-card h3,
+  .table th,
+  .table-compact th {
+    font-size: 11px;
+  }
+
+  .kpi-card strong {
+    font-size: 20px;
+  }
+
+  .panel h3,
+  .future-modal__content h2 {
+    font-size: 15px;
+  }
+
+  .btn {
+    font-size: 13px;
+  }
+
+  .auth-card h1 {
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    font-size: 12px;
+  }
+
+  .sidebar__brand h1 {
+    font-size: 21px;
+    line-height: 24px;
+  }
+
+  .sidebar__brand p,
+  .topbar__user small,
+  .page-breadcrumb,
+  .panel-subtitle,
+  .activity-text,
+  .future-purchases-projects span {
+    font-size: 11px;
+  }
+
+  .page-header h2 {
+    font-size: 20px;
+  }
+
+  .kpi-card strong,
+  .production-progress-card strong {
+    font-size: 18px;
+  }
+
+  .kpi-card h3,
+  .panel h3,
+  .table,
+  .table-compact,
+  .btn,
+  .accounting-filter,
+  .accounting-delete-label,
+  .clients-form label,
+  .budget-form label,
+  .page-filters label,
+  .page-filters input,
+  .page-filters select {
+    font-size: 12px;
+  }
+
+  .table th,
+  .table-compact th {
+    font-size: 10px;
+  }
+
+  .auth-card h1 {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 430px) {
+  .page-header h2 {
+    font-size: 18px;
+  }
+
+  .kpi-card strong,
+  .production-progress-card strong {
+    font-size: 17px;
+  }
+
+  .btn,
+  .table,
+  .table-compact,
+  .accounting-filter,
+  .clients-form label,
+  .budget-form label,
+  .page-filters input,
+  .page-filters select {
+    font-size: 11px;
+  }
+}
+
+/* Module-specific typography polish (executive profile) */
+.dashboard-section-header h3 {
+  font-size: 20px;
+}
+
+.kpi-card strong,
+.production-progress-card strong {
+  font-size: 28px;
+}
+
+.kpi-card h3,
+.quick-action-item strong {
+  font-size: 15px;
+}
+
+.quick-action-item small,
+.dashboard-footer,
+.dashboard-footer strong,
+.panel-subtitle,
+.budget-detail__meta span,
+.budget-chip {
+  font-size: 11px;
+}
+
+.budget-detail-header h3,
+.budget-items__header h3,
+.budget-form-panel h3,
+.budgets-table-panel h3 {
+  font-size: 18px;
+}
+
+.budget-detail__item,
+.budget-summary,
+.budget-item-row__total,
+.budget-form label,
+.clients-form label,
+.accounting-filter,
+.accounting-selection-check,
+.accounting-selection-bar strong,
+.accounting-delete-label,
+.accounting-delete-label input,
+.accounting-table td,
+.table td,
+.table-compact td {
+  font-size: 12px;
+}
+
+.accounting-table th,
+.table th,
+.table-compact th {
+  font-size: 10px;
+}
+
+@media (max-width: 920px) {
+  .dashboard-section-header h3 {
+    font-size: 17px;
+  }
+
+  .kpi-card strong,
+  .production-progress-card strong {
+    font-size: 22px;
+  }
+
+  .kpi-card h3,
+  .quick-action-item strong {
+    font-size: 13px;
+  }
+
+  .budget-detail-header h3,
+  .budget-items__header h3,
+  .budget-form-panel h3,
+  .budgets-table-panel h3 {
+    font-size: 15px;
+  }
+
+  .budget-detail__item,
+  .budget-summary,
+  .budget-item-row__total,
+  .budget-form label,
+  .clients-form label,
+  .accounting-filter,
+  .accounting-selection-check,
+  .accounting-selection-bar strong,
+  .accounting-delete-label,
+  .accounting-delete-label input,
+  .accounting-table td,
+  .table td,
+  .table-compact td {
+    font-size: 11px;
+  }
+
+  .quick-action-item small,
+  .dashboard-footer,
+  .dashboard-footer strong,
+  .panel-subtitle,
+  .budget-detail__meta span,
+  .budget-chip,
+  .accounting-table th,
+  .table th,
+  .table-compact th {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-section-header h3 {
+    font-size: 15px;
+  }
+
+  .kpi-card strong,
+  .production-progress-card strong {
+    font-size: 19px;
+  }
+
+  .kpi-card h3,
+  .quick-action-item strong,
+  .budget-detail-header h3,
+  .budget-items__header h3,
+  .budget-form-panel h3,
+  .budgets-table-panel h3 {
+    font-size: 12px;
+  }
+
+  .budget-detail__item,
+  .budget-summary,
+  .budget-item-row__total,
+  .budget-form label,
+  .clients-form label,
+  .accounting-filter,
+  .accounting-selection-check,
+  .accounting-selection-bar strong,
+  .accounting-delete-label,
+  .accounting-delete-label input,
+  .accounting-table td,
+  .table td,
+  .table-compact td {
+    font-size: 10px;
+  }
+
+  .quick-action-item small,
+  .dashboard-footer,
+  .dashboard-footer strong,
+  .panel-subtitle,
+  .budget-detail__meta span,
+  .budget-chip,
+  .accounting-table th,
+  .table th,
+  .table-compact th {
+    font-size: 9px;
   }
 }

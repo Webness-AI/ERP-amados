@@ -20,9 +20,13 @@ function toIsoDate(value: string): string | undefined {
 function AccountSection({
   title,
   rows,
+  total,
+  totalLabel,
 }: {
   title: string;
   rows: TrialBalanceRow[];
+  total: number;
+  totalLabel: string;
 }) {
   return (
     <article className="panel">
@@ -45,6 +49,12 @@ function AccountSection({
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr>
+              <th colSpan={2}>{totalLabel}</th>
+              <th className="text-right">{formatMoney(total)}</th>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </article>
@@ -135,6 +145,14 @@ export function EstadoContablePage() {
               <strong>{formatMoney(report.summary.assets)}</strong>
             </article>
             <article className="kpi-card">
+              <small>Pasivos</small>
+              <strong>{formatMoney(report.summary.liabilities)}</strong>
+            </article>
+            <article className="kpi-card">
+              <small>Patrimonio neto</small>
+              <strong>{formatMoney(report.summary.equity)}</strong>
+            </article>
+            <article className="kpi-card">
               <small>Pasivos + Patrimonio</small>
               <strong>{formatMoney(report.summary.liabilitiesPlusEquity)}</strong>
             </article>
@@ -152,14 +170,20 @@ export function EstadoContablePage() {
             <AccountSection
               title="Activos"
               rows={report.balanceSheet.assets}
+              total={report.balanceSheet.totals.assets}
+              totalLabel="Total activos"
             />
             <AccountSection
               title="Pasivos"
               rows={report.balanceSheet.liabilities}
+              total={report.balanceSheet.totals.liabilities}
+              totalLabel="Total pasivos"
             />
             <AccountSection
               title="Patrimonio Neto"
               rows={report.balanceSheet.equity}
+              total={report.balanceSheet.totals.equity}
+              totalLabel="Total patrimonio neto"
             />
           </div>
 
