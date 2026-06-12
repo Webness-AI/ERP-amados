@@ -24,6 +24,7 @@ export type Material = AuditableFields & {
   color?: string | null;
   note?: string | null;
   unit: string;
+  unitPrice: number;
   minStock: number;
   isActive: boolean;
   createdAt: Date;
@@ -81,6 +82,12 @@ const materialSchema = new Schema<Material>(
       trim: true,
       default: "u",
       maxlength: 30,
+    },
+    unitPrice: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
     },
     minStock: {
       type: Number,

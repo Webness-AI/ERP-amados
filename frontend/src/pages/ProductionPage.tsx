@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { FormPopup } from "../components/FormPopup";
 import { Pagination } from "../components/Pagination";
 import {
   createProductionOrderApi,
@@ -12,6 +13,7 @@ import {
   type ProductionPriority,
   type ProductionStatus,
 } from "../services/erp-api";
+import { formatDate } from "../utils/formatters";
 
 const PAGE_SIZE = 8;
 
@@ -50,19 +52,6 @@ const emptyFormState: ProductionFormState = {
   notes: "",
 };
 
-function formatDate(value?: string | null): string {
-  if (!value) {
-    return "Sin fecha";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Sin fecha";
-  }
-
-  return date.toLocaleDateString("es-AR");
-}
-
 function progressByStatus(status: ProductionStatus): number {
   if (status === "PENDIENTE") {
     return 5;
@@ -91,6 +80,10 @@ export function ProductionPage() {
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [formState, setFormState] =
     useState<ProductionFormState>(emptyFormState);
+  const [initialFormState, setInitialFormState] =
+    useState<ProductionFormState>(emptyFormState);
+  const [isFormPopupOpen, setIsFormPopupOpen] = useState(false);
+  const [isFormPopupMinimized, setIsFormPopupMinimized] = useState(false);
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
@@ -199,20 +192,61 @@ export function ProductionPage() {
   const clearForm = () => {
     setEditingOrderId(null);
     setFormState(emptyFormState);
+    setInitialFormState(emptyFormState);
     setFormError(null);
   };
 
+  const hasUnsavedChanges =
+    JSON.stringify(formState) !== JSON.stringify(initialFormState);
+
+  const openCreatePopup = () => {
+    clearForm();
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const handleMinimizeFormPopup = () => {
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(true);
+  };
+
+  const handleRestoreFormPopup = () => {
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const closeAndResetPopup = () => {
+    clearForm();
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(false);
+  };
+
+  const handleRequestCloseFormPopup = () => {
+    if (
+      hasUnsavedChanges &&
+      !window.confirm("Hay cambios sin guardar. ¿Deseas cerrar y descartarlos?")
+    ) {
+      return;
+    }
+
+    closeAndResetPopup();
+  };
+
   const startEdit = (order: ProductionOrderRecord) => {
-    setEditingOrderId(order._id);
-    setSelectedOrderId(order._id);
-    setFormState({
+    const nextFormState = {
       projectId: order.projectId,
       title: order.title,
       priority: order.priority,
       assigneeName: order.assigneeName ?? "",
       notes: order.notes ?? "",
-    });
+    };
+    setEditingOrderId(order._id);
+    setSelectedOrderId(order._id);
+    setFormState(nextFormState);
+    setInitialFormState(nextFormState);
     setFormError(null);
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -254,7 +288,7 @@ export function ProductionPage() {
       }
 
       await refreshList();
-      clearForm();
+      closeAndResetPopup();
     } catch {
       setFormError("No se pudo guardar la orden");
     } finally {
@@ -309,10 +343,19 @@ export function ProductionPage() {
           <button
             className="btn btn-secondary"
             type="button"
-            onClick={clearForm}
+            onClick={openCreatePopup}
           >
             Nueva orden
           </button>
+          {isFormPopupMinimized && (
+            <button
+              className="btn btn-tertiary"
+              type="button"
+              onClick={handleRestoreFormPopup}
+            >
+              Restaurar formulario
+            </button>
+          )}
           <button className="btn btn-primary" type="button">
             Ver tablero de planta
           </button>
@@ -534,131 +577,125 @@ export function ProductionPage() {
             )}
           </article>
 
-          <article className="panel budget-form-panel">
-            <div className="clients-form-header">
-              <div>
-                <h3>{editingOrderId ? "Editar orden" : "Nueva orden"}</h3>
-                <p>
-                  {editingOrderId
-                    ? "Ajusta datos de trabajo y prioridad."
-                    : "Carga una orden productiva vinculada a un proyecto."}
-                </p>
-              </div>
-              {editingOrderId && (
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={clearForm}
-                >
-                  Limpiar
-                </button>
-              )}
-            </div>
-
-            <form
-              className="budget-form"
-              onSubmit={(event) => void handleSubmit(event)}
-            >
-              <label>
-                <span>ID proyecto *</span>
-                <input
-                  type="text"
-                  value={formState.projectId}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      projectId: event.target.value,
-                    }))
-                  }
-                  required
-                  disabled={Boolean(editingOrderId)}
-                />
-              </label>
-              <label>
-                <span>Titulo *</span>
-                <input
-                  type="text"
-                  value={formState.title}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      title: event.target.value,
-                    }))
-                  }
-                  required
-                />
-              </label>
-              <div className="budget-form__row">
-                <label>
-                  <span>Prioridad</span>
-                  <select
-                    value={formState.priority}
-                    onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        priority: event.target.value as ProductionPriority,
-                      }))
-                    }
-                  >
-                    <option value="LOW">Baja</option>
-                    <option value="MEDIUM">Media</option>
-                    <option value="HIGH">Alta</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Responsable</span>
-                  <input
-                    type="text"
-                    value={formState.assigneeName}
-                    onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        assigneeName: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-              </div>
-              <label>
-                <span>Notas</span>
-                <textarea
-                  rows={4}
-                  value={formState.notes}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      notes: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-
-              {formError && <p className="form-error">{formError}</p>}
-
-              <div className="clients-form-actions">
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={isSaving}
-                >
-                  {isSaving
-                    ? "Guardando..."
-                    : editingOrderId
-                      ? "Guardar cambios"
-                      : "Crear orden"}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={clearForm}
-                >
-                  Reiniciar
-                </button>
-              </div>
-            </form>
-          </article>
         </div>
       </div>
+
+      <FormPopup
+        isOpen={isFormPopupOpen}
+        title={editingOrderId ? "Editar orden" : "Nueva orden"}
+        subtitle={
+          editingOrderId
+            ? "Ajusta datos de trabajo y prioridad."
+            : "Carga una orden productiva vinculada a un proyecto."
+        }
+        onMinimize={handleMinimizeFormPopup}
+        onRequestClose={handleRequestCloseFormPopup}
+      >
+        <form
+          className="budget-form"
+          onSubmit={(event) => void handleSubmit(event)}
+        >
+          <label>
+            <span>ID proyecto *</span>
+            <input
+              type="text"
+              value={formState.projectId}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  projectId: event.target.value,
+                }))
+              }
+              required
+              disabled={Boolean(editingOrderId)}
+            />
+          </label>
+          <label>
+            <span>Titulo *</span>
+            <input
+              type="text"
+              value={formState.title}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  title: event.target.value,
+                }))
+              }
+              required
+            />
+          </label>
+          <div className="budget-form__row">
+            <label>
+              <span>Prioridad</span>
+              <select
+                value={formState.priority}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    priority: event.target.value as ProductionPriority,
+                  }))
+                }
+              >
+                <option value="LOW">Baja</option>
+                <option value="MEDIUM">Media</option>
+                <option value="HIGH">Alta</option>
+              </select>
+            </label>
+            <label>
+              <span>Responsable</span>
+              <input
+                type="text"
+                value={formState.assigneeName}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    assigneeName: event.target.value,
+                  }))
+                }
+              />
+            </label>
+          </div>
+          <label>
+            <span>Notas</span>
+            <textarea
+              rows={4}
+              value={formState.notes}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  notes: event.target.value,
+                }))
+              }
+            />
+          </label>
+
+          {formError && <p className="form-error">{formError}</p>}
+
+          <div className="clients-form-actions">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={isSaving}
+            >
+              {isSaving
+                ? "Guardando..."
+                : editingOrderId
+                  ? "Guardar cambios"
+                  : "Crear orden"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setFormState(editingOrderId ? initialFormState : emptyFormState);
+                setFormError(null);
+              }}
+            >
+              Reiniciar
+            </button>
+          </div>
+        </form>
+      </FormPopup>
     </section>
   );
 }

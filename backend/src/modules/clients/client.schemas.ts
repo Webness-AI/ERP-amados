@@ -6,6 +6,9 @@ export const createClientSchema = z.object({
   email: z.string().trim().email().max(120).optional(),
   phone: z.string().trim().min(3).max(40).optional(),
   notes: z.string().trim().max(1000).optional(),
+  localidad: z.string().trim().max(180).optional(),
+  contacto: z.string().trim().max(140).optional(),
+  direccion: z.string().trim().max(500).optional(),
 });
 
 export const updateClientSchema = createClientSchema.partial();

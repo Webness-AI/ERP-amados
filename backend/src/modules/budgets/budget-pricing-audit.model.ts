@@ -23,6 +23,7 @@ export const BUDGET_PRICING_SOURCE_TYPES = {
   COMMISSION: "COMMISSION",
   BONUS: "BONUS",
   SHIPPING: "SHIPPING",
+  PACKAGING: "PACKAGING",
   MARGIN: "MARGIN",
 } as const;
 
@@ -48,6 +49,7 @@ export type BudgetPricingAudit = AuditableFields & {
   marginType: BudgetMarginType;
   laborHours: number;
   shippingCost: number;
+  packagingCost: number;
   monthlyFixedTotal: number;
   laborCostPerHour: number;
   fixedExpenseIds: Types.ObjectId[];
@@ -144,6 +146,11 @@ const budgetPricingAuditSchema = new Schema<BudgetPricingAudit>(
       min: 0,
     },
     shippingCost: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    packagingCost: {
       type: Number,
       required: true,
       min: 0,

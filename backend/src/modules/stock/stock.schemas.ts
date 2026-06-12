@@ -26,6 +26,7 @@ export const createMaterialSchema = z.object({
   color: z.string().trim().min(1).max(80).optional(),
   note: z.string().trim().max(1000).optional(),
   unit: z.string().trim().min(1).max(30).default("u"),
+  unitPrice: z.number().min(0).default(0),
   minStock: z.number().min(0).default(0),
 });
 
@@ -39,6 +40,7 @@ export const updateMaterialSchema = z
     color: z.string().trim().min(1).max(80).optional(),
     note: z.string().trim().max(1000).optional(),
     unit: z.string().trim().min(1).max(30).optional(),
+    unitPrice: z.number().min(0).optional(),
     minStock: z.number().min(0).optional(),
     isActive: z.boolean().optional(),
   })

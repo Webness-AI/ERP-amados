@@ -7,6 +7,10 @@ import {
   buildPaginatedResponse,
   parsePaginationInput,
 } from "../../core/utils/pagination";
+import {
+  normalizeOptionalString,
+  toDateOrNull,
+} from "../../core/utils/formatting";
 import { BUDGET_STATUSES, BudgetModel } from "../budgets/budget.model";
 import { ClientModel } from "../clients/client.model";
 import {
@@ -27,21 +31,6 @@ import type {
 type Actor = {
   id: string;
 };
-
-function normalizeOptionalString(value?: string): string | null {
-  if (!value) {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function toDateOrNull(value?: string): Date | null {
-  if (!value) {
-    return null;
-  }
-  return new Date(value);
-}
 
 async function assertClientExists(clientId: string): Promise<void> {
   const exists = await ClientModel.exists({
@@ -82,6 +71,9 @@ export async function createProject(
     budgetId: input.budgetId ?? null,
     name: input.name,
     description: normalizeOptionalString(input.description),
+    localidad: normalizeOptionalString(input.localidad),
+    contacto: normalizeOptionalString(input.contacto),
+    direccion: normalizeOptionalString(input.direccion),
     status: input.status ?? PROJECT_STATUSES.CONSULTA,
     deliveryDate: toDateOrNull(input.deliveryDate),
     isActive: true,
@@ -116,7 +108,13 @@ export async function listProjects(query: ListProjectsInput): Promise<{
 
   if (query.search && query.search.trim().length > 0) {
     const regex = new RegExp(query.search.trim(), "i");
-    filter.$or = [{ name: regex }, { description: regex }];
+    filter.$or = [
+      { name: regex },
+      { description: regex },
+      { localidad: regex },
+      { contacto: regex },
+      { direccion: regex },
+    ];
   }
 
   const [items, total] = await Promise.all([
@@ -168,6 +166,18 @@ export async function updateProject(
 
   if (input.description !== undefined) {
     updatePayload.description = normalizeOptionalString(input.description);
+  }
+
+  if (input.localidad !== undefined) {
+    updatePayload.localidad = normalizeOptionalString(input.localidad);
+  }
+
+  if (input.contacto !== undefined) {
+    updatePayload.contacto = normalizeOptionalString(input.contacto);
+  }
+
+  if (input.direccion !== undefined) {
+    updatePayload.direccion = normalizeOptionalString(input.direccion);
   }
 
   if (input.budgetId !== undefined) {
@@ -292,6 +302,24 @@ export async function createProjectFromApprovedBudget(
           "Budget already linked to a project",
           409,
           "BUDGET_ALREADY_LINKED",
+        );
+      }
+
+      const linkedBudgetInVersionGroup = await BudgetModel.findOne({
+        _id: { $ne: budget._id },
+        versionGroupId: budget.versionGroupId,
+        projectId: { $ne: null },
+        deletedAt: null,
+      })
+        .select("_id projectId")
+        .session(session)
+        .lean();
+
+      if (linkedBudgetInVersionGroup?.projectId) {
+        throw new AppError(
+          "Budget version group already linked to a project",
+          409,
+          "BUDGET_VERSION_GROUP_ALREADY_LINKED",
         );
       }
 
