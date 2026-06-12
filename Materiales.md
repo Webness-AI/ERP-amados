@@ -29,7 +29,7 @@ Lista de materiales organizada por rubro. Los precios estan expresados como prec
 | Melamina MDF Blanco Tundra | 15 mm, 1,83 x 2,75 m | $86,000.00 |
 | Melamina MDF Blanco Tundra | 18 mm, 1,83 x 2,75 m | $91,000.00 |
 | Melamina MDF oscuros madera | 18 mm, 1,83 x 2,75 m | $93,712.50 |
-| Melamina MDF Blanco Nature | 18 mm, 1,83 x 2,76 m | $94,815.00 |
+| Melamina MDF Blanco NatuMre | 18 mm, 1,83 x 2,76 m | $94,815.00 |
 | Melamina MDF Nature / Hilados | 18 mm, 1,83 x 2,75 m | $135,000.00 |
 
 ## Aglomerado / MDP
