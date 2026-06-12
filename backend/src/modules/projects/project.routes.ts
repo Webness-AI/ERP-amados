@@ -5,6 +5,10 @@ import { authorizeMiddleware } from "../../core/auth/authorize.middleware";
 import { AppError } from "../../core/errors/app-error";
 import { ROLES } from "../auth/roles";
 import {
+  generateNonFinalizedProjectsPdfBuffer,
+  generateProjectPdfBuffer,
+} from "./project-pdf.service";
+import {
   createProject,
   createProjectFromApprovedBudget,
   getProjectById,
@@ -51,6 +55,43 @@ projectRouter.get(
         ok: true,
         data: result,
       });
+    })().catch(next);
+  },
+);
+
+projectRouter.get(
+  "/pdf/non-finalized",
+  authMiddleware,
+  authorizeMiddleware(READ_ROLES),
+  (_req, res, next) => {
+    (async () => {
+      const pdfBuffer = await generateNonFinalizedProjectsPdfBuffer();
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="proyectos-no-finalizados-${Date.now()}.pdf"`,
+      );
+      res.status(200).send(pdfBuffer);
+    })().catch(next);
+  },
+);
+
+projectRouter.get(
+  "/:id/pdf",
+  authMiddleware,
+  authorizeMiddleware(READ_ROLES),
+  (req, res, next) => {
+    (async () => {
+      const projectId = requireRouteParam(req.params.id, "id");
+      const pdfBuffer = await generateProjectPdfBuffer(projectId);
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="proyecto-${projectId}.pdf"`,
+      );
+      res.status(200).send(pdfBuffer);
     })().catch(next);
   },
 );

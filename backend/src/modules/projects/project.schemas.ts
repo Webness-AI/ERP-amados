@@ -7,6 +7,9 @@ export const createProjectSchema = z.object({
   budgetId: z.string().min(1).optional(),
   name: z.string().trim().min(2).max(180),
   description: z.string().trim().max(2000).optional(),
+  localidad: z.string().trim().max(180).optional(),
+  contacto: z.string().trim().max(140).optional(),
+  direccion: z.string().trim().max(500).optional(),
   status: z
     .enum([
       PROJECT_STATUSES.CONSULTA,

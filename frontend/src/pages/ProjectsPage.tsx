@@ -6,26 +6,18 @@ import { Pagination } from "../components/Pagination";
 
 import {
   deleteProjectApi,
+  downloadNonFinalizedProjectsPdfApi,
+  downloadProjectPdfApi,
+  getBudgetByIdApi,
   getProjectByIdApi,
   getProjectsApi,
   updateProjectApi,
   updateProjectStatusApi,
+  type BudgetRecord,
   type ProjectItem,
   type ProjectStatus,
 } from "../services/erp-api";
-
-function formatDate(value?: string | null): string {
-  if (!value) {
-    return "Sin fecha";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Sin fecha";
-  }
-
-  return date.toLocaleDateString("es-AR");
-}
+import { formatDate, formatDateTime, formatMoneyWithCurrency } from "../utils/formatters";
 
 function getProgressByStatus(status: ProjectStatus): number {
   switch (status) {
@@ -87,7 +79,18 @@ export function ProjectsPage() {
     null,
   );
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [isLoadingBudgetDetail, setIsLoadingBudgetDetail] = useState(false);
+  const [budgetDetailError, setBudgetDetailError] = useState<string | null>(
+    null,
+  );
+  const [selectedBudget, setSelectedBudget] = useState<BudgetRecord | null>(
+    null,
+  );
   const [nextStatus, setNextStatus] = useState<ProjectStatus | "">("");
+  const [isDownloadingBulkPdf, setIsDownloadingBulkPdf] = useState(false);
+  const [downloadingProjectPdfId, setDownloadingProjectPdfId] = useState<
+    string | null
+  >(null);
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
@@ -187,6 +190,46 @@ export function ProjectsPage() {
 
     void loadDetail();
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (!selectedProject?.budgetId) {
+      setSelectedBudget(null);
+      setBudgetDetailError(null);
+      setIsLoadingBudgetDetail(false);
+      return;
+    }
+
+    let active = true;
+
+    const loadBudgetDetail = async () => {
+      setIsLoadingBudgetDetail(true);
+      setBudgetDetailError(null);
+
+      try {
+        const budget = await getBudgetByIdApi(selectedProject.budgetId as string);
+        if (!active) {
+          return;
+        }
+        setSelectedBudget(budget);
+      } catch {
+        if (!active) {
+          return;
+        }
+        setSelectedBudget(null);
+        setBudgetDetailError("No se pudo cargar el detalle del presupuesto vinculado");
+      } finally {
+        if (active) {
+          setIsLoadingBudgetDetail(false);
+        }
+      }
+    };
+
+    void loadBudgetDetail();
+
+    return () => {
+      active = false;
+    };
+  }, [selectedProject]);
 
   const setPage = (next: number) => {
     const params = new URLSearchParams(searchParams);
@@ -323,10 +366,31 @@ export function ProjectsPage() {
 
   const handleProjectAction = async (
     row: ProjectItem,
-    action: "view" | "edit" | "delete",
+    action: "view" | "edit" | "delete" | "print",
   ) => {
     if (action === "view") {
       setSelectedProjectId(row._id);
+      return;
+    }
+
+    if (action === "print") {
+      setActionError(null);
+      setDownloadingProjectPdfId(row._id);
+      try {
+        const blob = await downloadProjectPdfApi(row._id);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `proyecto-${row._id}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } catch {
+        setActionError("No se pudo descargar el PDF del proyecto");
+      } finally {
+        setDownloadingProjectPdfId(null);
+      }
       return;
     }
 
@@ -336,6 +400,27 @@ export function ProjectsPage() {
     }
 
     await handleDeleteProject(row);
+  };
+
+  const handleDownloadNonFinalizedProjectsPdf = async () => {
+    setActionError(null);
+    setIsDownloadingBulkPdf(true);
+
+    try {
+      const blob = await downloadNonFinalizedProjectsPdfApi();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `proyectos-no-finalizados-${Date.now()}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setActionError("No se pudo descargar el PDF de proyectos no finalizados");
+    } finally {
+      setIsDownloadingBulkPdf(false);
+    }
   };
 
   return (
@@ -363,8 +448,13 @@ export function ProjectsPage() {
             <button type="button" className="btn btn-ghost">
               Filtros
             </button>
-            <button type="button" className="btn btn-ghost">
-              Reporte
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={isDownloadingBulkPdf}
+              onClick={() => void handleDownloadNonFinalizedProjectsPdf()}
+            >
+              {isDownloadingBulkPdf ? "Generando PDF..." : "PDF no finalizados"}
             </button>
           </div>
         </div>
@@ -470,7 +560,7 @@ export function ProjectsPage() {
           </article>
         )}
 
-        <div className="table-wrapper">
+        <div className="table-wrapper projects-table-wrapper">
           <table className="table table-compact project-table">
             <thead>
               <tr>
@@ -556,6 +646,16 @@ export function ProjectsPage() {
                           >
                             👁️
                           </button>
+                          <button
+                            type="button"
+                            className="btn btn-tertiary btn-emoji-action"
+                            title="Imprimir PDF"
+                            aria-label="Imprimir PDF del proyecto"
+                            disabled={downloadingProjectPdfId === row._id}
+                            onClick={() => void handleProjectAction(row, "print")}
+                          >
+                            {downloadingProjectPdfId === row._id ? "⏳" : "🖨️"}
+                          </button>
                           {canWrite && (
                             <button
                               type="button"
@@ -616,26 +716,278 @@ export function ProjectsPage() {
           <div className="budget-detail">
             <div className="budget-detail__meta">
               <div>
+                <span>ID proyecto</span>
+                <strong>{selectedProject._id}</strong>
+              </div>
+              <div>
                 <span>Proyecto</span>
                 <strong>{selectedProject.name}</strong>
               </div>
               <div>
-                <span>Cliente</span>
+                <span>ID cliente</span>
                 <strong>{selectedProject.clientId}</strong>
+              </div>
+              <div>
+                <span>ID presupuesto</span>
+                <strong>{selectedProject.budgetId ?? "-"}</strong>
               </div>
               <div>
                 <span>Estado</span>
                 <strong>{selectedProject.status}</strong>
               </div>
               <div>
+                <span>Activo</span>
+                <strong>{selectedProject.isActive ? "Si" : "No"}</strong>
+              </div>
+              <div>
                 <span>Entrega</span>
                 <strong>{formatDate(selectedProject.deliveryDate)}</strong>
+              </div>
+              <div>
+                <span>Localidad</span>
+                <strong>{selectedProject.localidad ?? "-"}</strong>
+              </div>
+              <div>
+                <span>Contacto</span>
+                <strong>{selectedProject.contacto ?? "-"}</strong>
+              </div>
+              <div>
+                <span>Dirección</span>
+                <strong>{selectedProject.direccion ?? "-"}</strong>
+              </div>
+              <div>
+                <span>Creado</span>
+                <strong>{formatDate(selectedProject.createdAt)}</strong>
+              </div>
+              <div>
+                <span>Actualizado</span>
+                <strong>{formatDate(selectedProject.updatedAt)}</strong>
+              </div>
+              <div>
+                <span>Creado por</span>
+                <strong>{selectedProject.createdBy ?? "-"}</strong>
+              </div>
+              <div>
+                <span>Actualizado por</span>
+                <strong>{selectedProject.updatedBy ?? "-"}</strong>
               </div>
             </div>
 
             <p className="panel-subtitle">
               {selectedProject.description ?? "Sin descripción registrada."}
             </p>
+
+            <hr />
+
+            <div className="budget-detail-header">
+              <div>
+                <h3>Detalle principal del proyecto (presupuesto)</h3>
+                <p>Desglose comercial y técnico del presupuesto vinculado.</p>
+              </div>
+            </div>
+
+            {!selectedProject.budgetId && (
+              <p className="text-muted">
+                Este proyecto no tiene presupuesto vinculado.
+              </p>
+            )}
+
+            {selectedProject.budgetId && isLoadingBudgetDetail && (
+              <p className="text-muted">Cargando detalle del presupuesto...</p>
+            )}
+
+            {selectedProject.budgetId && !isLoadingBudgetDetail && budgetDetailError && (
+              <p className="text-negative">{budgetDetailError}</p>
+            )}
+
+            {selectedProject.budgetId && !isLoadingBudgetDetail && selectedBudget && (
+              <>
+                <div className="budget-detail__meta">
+                  <div>
+                    <span>ID presupuesto</span>
+                    <strong>{selectedBudget._id}</strong>
+                  </div>
+                  <div>
+                    <span>Título</span>
+                    <strong>{selectedBudget.title}</strong>
+                  </div>
+                  <div>
+                    <span>Estado presupuesto</span>
+                    <strong>{selectedBudget.status}</strong>
+                  </div>
+                  <div>
+                    <span>Versión</span>
+                    <strong>{selectedBudget.version}</strong>
+                  </div>
+                  <div>
+                    <span>Moneda</span>
+                    <strong>{selectedBudget.currency}</strong>
+                  </div>
+                  <div>
+                    <span>Subtotal</span>
+                    <strong>
+                      {formatMoneyWithCurrency(
+                        selectedBudget.subtotal,
+                        selectedBudget.currency,
+                      )}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Total</span>
+                    <strong>
+                      {formatMoneyWithCurrency(
+                        selectedBudget.total,
+                        selectedBudget.currency,
+                      )}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Precio final</span>
+                    <strong>
+                      {formatMoneyWithCurrency(
+                        selectedBudget.finalPrice ?? selectedBudget.total,
+                        selectedBudget.currency,
+                      )}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Costo materiales</span>
+                    <strong>
+                      {formatMoneyWithCurrency(
+                        selectedBudget.materialsCost ?? 0,
+                        selectedBudget.currency,
+                      )}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Mano de obra</span>
+                    <strong>
+                      {formatMoneyWithCurrency(
+                        selectedBudget.laborCost ?? 0,
+                        selectedBudget.currency,
+                      )}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Horas MO</span>
+                    <strong>{selectedBudget.laborHours ?? 0}</strong>
+                  </div>
+                  <div>
+                    <span>Costo proyecto</span>
+                    <strong>
+                      {formatMoneyWithCurrency(
+                        selectedBudget.projectCost ?? 0,
+                        selectedBudget.currency,
+                      )}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Margen</span>
+                    <strong>{selectedBudget.marginPercent ?? 0}%</strong>
+                  </div>
+                  <div>
+                    <span>Monto margen</span>
+                    <strong>
+                      {formatMoneyWithCurrency(
+                        selectedBudget.marginAmount ?? 0,
+                        selectedBudget.currency,
+                      )}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Aprobado</span>
+                    <strong>{formatDateTime(selectedBudget.approvedAt)}</strong>
+                  </div>
+                  <div>
+                    <span>Última actualización</span>
+                    <strong>{formatDateTime(selectedBudget.updatedAt)}</strong>
+                  </div>
+                </div>
+
+                <p className="panel-subtitle">
+                  {selectedBudget.description ?? "Sin descripción en presupuesto."}
+                </p>
+
+                <h4>Rubros del presupuesto</h4>
+                <div className="table-wrapper">
+                  <table className="table table-compact">
+                    <thead>
+                      <tr>
+                        <th>Descripción</th>
+                        <th>Cantidad</th>
+                        <th>Precio unitario</th>
+                        <th>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedBudget.items.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="text-center">
+                            Sin rubros cargados.
+                          </td>
+                        </tr>
+                      )}
+                      {selectedBudget.items.map((item, index) => (
+                        <tr key={`${item.description}-${index}`}>
+                          <td>{item.description}</td>
+                          <td>{item.quantity}</td>
+                          <td>
+                            {formatMoneyWithCurrency(
+                              item.unitPrice,
+                              selectedBudget.currency,
+                            )}
+                          </td>
+                          <td>
+                            {formatMoneyWithCurrency(item.total, selectedBudget.currency)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <h4>Materiales del presupuesto</h4>
+                <div className="table-wrapper">
+                  <table className="table table-compact">
+                    <thead>
+                      <tr>
+                        <th>Material ID</th>
+                        <th>Cantidad</th>
+                        <th>Precio unitario</th>
+                        <th>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(selectedBudget.materials ?? []).length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="text-center">
+                            Sin materiales cargados.
+                          </td>
+                        </tr>
+                      )}
+                      {(selectedBudget.materials ?? []).map((material, index) => (
+                        <tr key={`${material.materialId}-${index}`}>
+                          <td>{material.materialId}</td>
+                          <td>{material.quantity}</td>
+                          <td>
+                            {formatMoneyWithCurrency(
+                              material.unitPrice,
+                              selectedBudget.currency,
+                            )}
+                          </td>
+                          <td>
+                            {formatMoneyWithCurrency(
+                              material.total,
+                              selectedBudget.currency,
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
 
             {canWrite && (
               <div className="clients-form-actions">

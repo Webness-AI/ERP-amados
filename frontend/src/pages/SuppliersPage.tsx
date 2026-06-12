@@ -2,6 +2,7 @@ import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react
 import { useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../auth/useAuth";
+import { FormPopup } from "../components/FormPopup";
 import { Pagination } from "../components/Pagination";
 import {
   createSupplierApi,
@@ -11,6 +12,7 @@ import {
   type SupplierInput,
   type SupplierItem,
 } from "../services/erp-api";
+import { formatDate } from "../utils/formatters";
 
 const PAGE_SIZE = 10;
 
@@ -24,17 +26,6 @@ const emptyForm: SupplierFormState = {
   notes: "",
 };
 
-function formatDate(value?: string): string {
-  if (!value) {
-    return "Sin fecha";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Sin fecha";
-  }
-  return date.toLocaleDateString("es-AR");
-}
-
 export function SuppliersPage() {
   const { user } = useAuth();
   const canWrite = user?.role === "ADMIN_GENERAL" || user?.role === "ADMIN";
@@ -47,6 +38,8 @@ export function SuppliersPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [formState, setFormState] = useState<SupplierFormState>(emptyForm);
+  const [isFormPopupOpen, setIsFormPopupOpen] = useState(false);
+  const [isFormPopupMinimized, setIsFormPopupMinimized] = useState(false);
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
@@ -107,6 +100,43 @@ export function SuppliersPage() {
     setSearchParams(params);
   };
 
+  const openCreatePopup = () => {
+    setFormState(emptyForm);
+    setFormError(null);
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const hasUnsavedChanges = JSON.stringify(formState) !== JSON.stringify(emptyForm);
+
+  const handleMinimizeFormPopup = () => {
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(true);
+  };
+
+  const handleRestoreFormPopup = () => {
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const closeAndResetForm = () => {
+    setFormState(emptyForm);
+    setFormError(null);
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(false);
+  };
+
+  const handleRequestCloseFormPopup = () => {
+    if (
+      hasUnsavedChanges &&
+      !window.confirm("Hay cambios sin guardar. ¿Deseas cerrar y descartarlos?")
+    ) {
+      return;
+    }
+
+    closeAndResetForm();
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError(null);
@@ -129,7 +159,7 @@ export function SuppliersPage() {
     setIsSaving(true);
     try {
       await createSupplierApi(payload);
-      setFormState(emptyForm);
+      closeAndResetForm();
       await load();
     } catch {
       setFormError("No se pudo crear el proveedor");
@@ -185,6 +215,26 @@ export function SuppliersPage() {
           <h2>Proveedores</h2>
           <p>Gestión mínima operativa de proveedores activos.</p>
         </div>
+        {canWrite && (
+          <div className="view-controls">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={openCreatePopup}
+            >
+              Nuevo proveedor
+            </button>
+            {isFormPopupMinimized && (
+              <button
+                type="button"
+                className="btn btn-tertiary"
+                onClick={handleRestoreFormPopup}
+              >
+                Restaurar formulario
+              </button>
+            )}
+          </div>
+        )}
       </header>
 
       <div className="kpi-grid">
@@ -332,108 +382,111 @@ export function SuppliersPage() {
           />
         </article>
 
-        {canWrite && (
-          <article className="panel clients-form-panel">
-            <div className="clients-form-header">
-              <div>
-                <h3>Nuevo proveedor</h3>
-                <p>Alta rápida de proveedor para flujo de compras.</p>
-              </div>
-            </div>
-
-            <form
-              className="clients-form"
-              onSubmit={(event) => void handleSubmit(event)}
-            >
-              <label>
-                <span>Nombre *</span>
-                <input
-                  type="text"
-                  value={formState.name}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                <span>Contacto</span>
-                <input
-                  type="text"
-                  value={formState.contactName ?? ""}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      contactName: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Email</span>
-                <input
-                  type="email"
-                  value={formState.email ?? ""}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      email: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Teléfono</span>
-                <input
-                  type="text"
-                  value={formState.phone ?? ""}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      phone: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Notas</span>
-                <textarea
-                  rows={4}
-                  value={formState.notes ?? ""}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      notes: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-
-              {formError && <p className="form-error">{formError}</p>}
-
-              <div className="clients-form-actions">
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={isSaving}
-                >
-                  {isSaving ? "Guardando..." : "Crear proveedor"}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setFormState(emptyForm)}
-                >
-                  Reiniciar
-                </button>
-              </div>
-            </form>
-          </article>
-        )}
       </div>
+
+      {canWrite && (
+        <FormPopup
+          isOpen={isFormPopupOpen}
+          title="Nuevo proveedor"
+          subtitle="Alta rápida de proveedor para flujo de compras."
+          onMinimize={handleMinimizeFormPopup}
+          onRequestClose={handleRequestCloseFormPopup}
+        >
+          <form
+            className="clients-form"
+            onSubmit={(event) => void handleSubmit(event)}
+          >
+            <label>
+              <span>Nombre *</span>
+              <input
+                type="text"
+                value={formState.name}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
+            <label>
+              <span>Contacto</span>
+              <input
+                type="text"
+                value={formState.contactName ?? ""}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    contactName: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>Email</span>
+              <input
+                type="email"
+                value={formState.email ?? ""}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    email: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>Teléfono</span>
+              <input
+                type="text"
+                value={formState.phone ?? ""}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    phone: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>Notas</span>
+              <textarea
+                rows={4}
+                value={formState.notes ?? ""}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    notes: event.target.value,
+                  }))
+                }
+              />
+            </label>
+
+            {formError && <p className="form-error">{formError}</p>}
+
+            <div className="clients-form-actions">
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isSaving}
+              >
+                {isSaving ? "Guardando..." : "Crear proveedor"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setFormState(emptyForm);
+                  setFormError(null);
+                }}
+              >
+                Reiniciar
+              </button>
+            </div>
+          </form>
+        </FormPopup>
+      )}
     </section>
   );
 }

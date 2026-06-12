@@ -5,6 +5,7 @@ import {
   buildPaginatedResponse,
   parsePaginationInput,
 } from "../../core/utils/pagination";
+import { normalizeOptionalString } from "../../core/utils/formatting";
 import {
   CASH_DIRECTIONS,
   CASH_PAYMENT_METHODS,
@@ -28,15 +29,6 @@ import type {
 type Actor = {
   id: string;
 };
-
-function normalizeOptionalString(value?: string): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
 
 async function assertClientExists(clientId: string): Promise<void> {
   const exists = await ClientModel.exists({

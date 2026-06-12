@@ -1,12 +1,18 @@
 export function formatMoney(value: number): string {
-  return `$ ${value.toLocaleString("es-AR")}`;
+  return `$ ${value.toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export function formatMoneyWithCurrency(
   value: number,
   currency = "ARS",
 ): string {
-  return `${currency} ${value.toLocaleString("es-AR")}`;
+  return `${currency} ${value.toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export function formatDate(value?: string | null): string {

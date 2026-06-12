@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { FormPopup } from "../components/FormPopup";
 import { Pagination } from "../components/Pagination";
 import {
   createCashMovementApi,
@@ -79,6 +80,8 @@ export function CashBanksPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [formState, setFormState] =
     useState<CashMovementFormState>(emptyFormState);
+  const [isFormPopupOpen, setIsFormPopupOpen] = useState(false);
+  const [isFormPopupMinimized, setIsFormPopupMinimized] = useState(false);
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
@@ -188,6 +191,42 @@ export function CashBanksPage() {
     setFormError(null);
   };
 
+  const openCreatePopup = () => {
+    resetForm();
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const hasUnsavedChanges =
+    JSON.stringify(formState) !== JSON.stringify(emptyFormState);
+
+  const handleMinimizeFormPopup = () => {
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(true);
+  };
+
+  const handleRestoreFormPopup = () => {
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const closeAndResetForm = () => {
+    resetForm();
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(false);
+  };
+
+  const handleRequestCloseFormPopup = () => {
+    if (
+      hasUnsavedChanges &&
+      !window.confirm("Hay cambios sin guardar. ¿Deseas cerrar y descartarlos?")
+    ) {
+      return;
+    }
+
+    closeAndResetForm();
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSaving(true);
@@ -224,7 +263,7 @@ export function CashBanksPage() {
     try {
       await createCashMovementApi(payload);
       await refreshList();
-      resetForm();
+      closeAndResetForm();
     } catch {
       setFormError("No se pudo registrar el movimiento");
     } finally {
@@ -248,10 +287,19 @@ export function CashBanksPage() {
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={resetForm}
+            onClick={openCreatePopup}
           >
             Nuevo movimiento
           </button>
+          {isFormPopupMinimized && (
+            <button
+              type="button"
+              className="btn btn-tertiary"
+              onClick={handleRestoreFormPopup}
+            >
+              Restaurar formulario
+            </button>
+          )}
           <button type="button" className="btn btn-primary">
             Exportar movimientos
           </button>
@@ -424,211 +472,211 @@ export function CashBanksPage() {
           />
         </article>
 
-        <article className="panel budget-form-panel">
-          <div className="clients-form-header">
-            <div>
-              <h3>Registrar movimiento</h3>
-              <p>Alta manual para caja chica o transacciones bancarias.</p>
-            </div>
-          </div>
+      </div>
 
-          <form
-            className="budget-form"
-            onSubmit={(event) => void handleSubmit(event)}
-          >
-            <div className="budget-form__row">
-              <label>
-                <span>Origen</span>
-                <select
-                  value={formState.source}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      source: event.target.value as CashSource,
-                    }))
-                  }
-                >
-                  <option value="CASH">Caja</option>
-                  <option value="BANK">Banco</option>
-                </select>
-              </label>
-              <label>
-                <span>Dirección</span>
-                <select
-                  value={formState.direction}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      direction: event.target.value as CashDirection,
-                    }))
-                  }
-                >
-                  <option value="INCOME">Ingreso</option>
-                  <option value="EXPENSE">Egreso</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="budget-form__row">
-              <label>
-                <span>Método</span>
-                <select
-                  value={formState.paymentMethod}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      paymentMethod: event.target.value as CashPaymentMethod,
-                    }))
-                  }
-                >
-                  <option value="EFECTIVO">Efectivo</option>
-                  <option value="TRANSFERENCIA">Transferencia</option>
-                  <option value="TARJETA">Tarjeta</option>
-                  <option value="CHEQUE">Cheque</option>
-                  <option value="OTRO">Otro</option>
-                </select>
-              </label>
-              <label>
-                <span>Moneda</span>
-                <input
-                  type="text"
-                  value={formState.currency}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      currency: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-            </div>
-
-            <div className="budget-form__row">
-              <label>
-                <span>Monto *</span>
-                <input
-                  type="number"
-                  min={0.01}
-                  step="0.01"
-                  value={formState.amount}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      amount: Number(event.target.value),
-                    }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                <span>Fecha y hora</span>
-                <input
-                  type="datetime-local"
-                  value={formState.occurredAt}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      occurredAt: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-            </div>
-
+      <FormPopup
+        isOpen={isFormPopupOpen}
+        title="Registrar movimiento"
+        subtitle="Alta manual para caja chica o transacciones bancarias."
+        onMinimize={handleMinimizeFormPopup}
+        onRequestClose={handleRequestCloseFormPopup}
+      >
+        <form
+          className="budget-form"
+          onSubmit={(event) => void handleSubmit(event)}
+        >
+          <div className="budget-form__row">
             <label>
-              <span>Concepto *</span>
-              <input
-                type="text"
-                value={formState.concept}
+              <span>Origen</span>
+              <select
+                value={formState.source}
                 onChange={(event) =>
                   setFormState((current) => ({
                     ...current,
-                    concept: event.target.value,
+                    source: event.target.value as CashSource,
+                  }))
+                }
+              >
+                <option value="CASH">Caja</option>
+                <option value="BANK">Banco</option>
+              </select>
+            </label>
+            <label>
+              <span>Dirección</span>
+              <select
+                value={formState.direction}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    direction: event.target.value as CashDirection,
+                  }))
+                }
+              >
+                <option value="INCOME">Ingreso</option>
+                <option value="EXPENSE">Egreso</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="budget-form__row">
+            <label>
+              <span>Método</span>
+              <select
+                value={formState.paymentMethod}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    paymentMethod: event.target.value as CashPaymentMethod,
+                  }))
+                }
+              >
+                <option value="EFECTIVO">Efectivo</option>
+                <option value="TRANSFERENCIA">Transferencia</option>
+                <option value="TARJETA">Tarjeta</option>
+                <option value="CHEQUE">Cheque</option>
+                <option value="OTRO">Otro</option>
+              </select>
+            </label>
+            <label>
+              <span>Moneda</span>
+              <input
+                type="text"
+                value={formState.currency}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    currency: event.target.value,
+                  }))
+                }
+              />
+            </label>
+          </div>
+
+          <div className="budget-form__row">
+            <label>
+              <span>Monto *</span>
+              <input
+                type="number"
+                min={0.01}
+                step="0.01"
+                value={formState.amount}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    amount: Number(event.target.value),
                   }))
                 }
                 required
               />
             </label>
+            <label>
+              <span>Fecha y hora</span>
+              <input
+                type="datetime-local"
+                value={formState.occurredAt}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    occurredAt: event.target.value,
+                  }))
+                }
+              />
+            </label>
+          </div>
 
-            <div className="budget-form__row">
-              <label>
-                <span>ID cliente</span>
-                <input
-                  type="text"
-                  value={formState.clientId}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      clientId: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                <span>ID proyecto</span>
-                <input
-                  type="text"
-                  value={formState.projectId}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      projectId: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-            </div>
+          <label>
+            <span>Concepto *</span>
+            <input
+              type="text"
+              value={formState.concept}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  concept: event.target.value,
+                }))
+              }
+              required
+            />
+          </label>
 
-            <div className="budget-form__row">
-              <label>
-                <span>Tipo de referencia</span>
-                <input
-                  type="text"
-                  value={formState.referenceType}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      referenceType: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                <span>ID de referencia</span>
-                <input
-                  type="text"
-                  value={formState.referenceId}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      referenceId: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-            </div>
+          <div className="budget-form__row">
+            <label>
+              <span>ID cliente</span>
+              <input
+                type="text"
+                value={formState.clientId}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    clientId: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>ID proyecto</span>
+              <input
+                type="text"
+                value={formState.projectId}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    projectId: event.target.value,
+                  }))
+                }
+              />
+            </label>
+          </div>
 
-            {formError && <p className="form-error">{formError}</p>}
+          <div className="budget-form__row">
+            <label>
+              <span>Tipo de referencia</span>
+              <input
+                type="text"
+                value={formState.referenceType}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    referenceType: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>ID de referencia</span>
+              <input
+                type="text"
+                value={formState.referenceId}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    referenceId: event.target.value,
+                  }))
+                }
+              />
+            </label>
+          </div>
 
-            <div className="clients-form-actions">
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={isSaving}
-              >
-                {isSaving ? "Guardando..." : "Registrar movimiento"}
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={resetForm}
-              >
-                Reiniciar
-              </button>
-            </div>
-          </form>
-        </article>
-      </div>
+          {formError && <p className="form-error">{formError}</p>}
+
+          <div className="clients-form-actions">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={isSaving}
+            >
+              {isSaving ? "Guardando..." : "Registrar movimiento"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={resetForm}
+            >
+              Reiniciar
+            </button>
+          </div>
+        </form>
+      </FormPopup>
     </section>
   );
 }

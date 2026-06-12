@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { Pagination } from "../components/Pagination";
+import { FormPopup } from "../components/FormPopup";
 
 import {
   acceptBudgetApi,
@@ -13,10 +14,12 @@ import {
   getBudgetByIdApi,
   getBudgetPricingAuditTrailApi,
   getBudgetsApi,
+  getMaterialsApi,
   recalculateBudgetPricingApi,
   rejectBudgetApi,
   updateBudgetStatusApi,
   reviseBudgetApi,
+  type MaterialItem,
   type BudgetPricingAuditEntry,
   type BudgetItemInput,
   type BudgetRecord,
@@ -26,6 +29,7 @@ import {
 import {
   formatDate,
   formatMoneyWithCurrency as formatMoney,
+  toDatetimeLocal,
 } from "../utils/formatters";
 
 const PAGE_SIZE = 8;
@@ -39,14 +43,57 @@ const statusOptions: Array<{ value: BudgetStatus | ""; label: string }> = [
   { value: "CANCELED", label: "Cancelado" },
 ];
 
+type EditableBudgetStatus = Exclude<BudgetStatus, "APPROVED">;
+
+function normalizeEditableStatus(status: BudgetStatus): EditableBudgetStatus {
+  if (status === "APPROVED") {
+    return "SENT";
+  }
+
+  return status;
+}
+
+function toIsoDateTimeOrUndefined(value?: string): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+
+  return date.toISOString();
+}
+
+function getDefaultCollectionDueDateLocal(): string {
+  return toDatetimeLocal(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString());
+}
+
 type BudgetFormState = {
   clientId: string;
   prospectName: string;
+  prospectLocalidad: string;
+  prospectContacto: string;
+  prospectDireccion: string;
   title: string;
   description: string;
   currency: string;
-  status: BudgetStatus;
+  status: EditableBudgetStatus;
   items: BudgetItemInput[];
+  materials: Array<{
+    materialId: string;
+    quantity: number;
+    unitPrice: number;
+  }>;
+  laborHours: number;
+  hourlyRate: number;
+  sellerCommission: number;
+  employeeBonus: number;
+  shippingCost: number;
+  packagingCost: number;
+  marginType: "COMUN_40" | "COCINA_55";
 };
 
 type BudgetAcceptModalState = {
@@ -85,20 +132,46 @@ type BudgetActionFeedback = {
 
 type BudgetTableAction = "edit" | "delete";
 
+type HourTask = {
+  task: string;
+  hours: number;
+};
+
 const emptyItem: BudgetItemInput = {
   description: "",
   quantity: 1,
   unitPrice: 0,
 };
 
+const DEFAULT_HOUR_TASKS: HourTask[] = [
+  { task: "Canteo total", hours: 4 },
+  { task: "Armado de modulos", hours: 2 },
+  { task: "Armado de cajones", hours: 2 },
+  { task: "Preparado de puertas", hours: 1 },
+  { task: "Otros Herrajes", hours: 0 },
+  { task: "Extra", hours: 0 },
+  { task: "Instalacion", hours: 8 },
+];
+
 const emptyFormState: BudgetFormState = {
   clientId: "",
   prospectName: "",
+  prospectLocalidad: "",
+  prospectContacto: "",
+  prospectDireccion: "",
   title: "",
   description: "",
   currency: "ARS",
   status: "DRAFT",
   items: [{ ...emptyItem }],
+  materials: [],
+  laborHours: 0,
+  hourlyRate: 0,
+  sellerCommission: 0,
+  employeeBonus: 0,
+  shippingCost: 0,
+  packagingCost: 0,
+  marginType: "COMUN_40",
 };
 
 function buildFormFromBudget(budget?: BudgetRecord | null): BudgetFormState {
@@ -109,10 +182,13 @@ function buildFormFromBudget(budget?: BudgetRecord | null): BudgetFormState {
   return {
     clientId: budget.clientId ?? "",
     prospectName: budget.prospectName ?? "",
+    prospectLocalidad: budget.prospectLocalidad ?? "",
+    prospectContacto: budget.prospectContacto ?? "",
+    prospectDireccion: budget.prospectDireccion ?? "",
     title: budget.title,
     description: budget.description ?? "",
     currency: budget.currency,
-    status: budget.status,
+    status: normalizeEditableStatus(budget.status),
     items:
       budget.items.length > 0
         ? budget.items.map((item) => ({
@@ -121,6 +197,22 @@ function buildFormFromBudget(budget?: BudgetRecord | null): BudgetFormState {
             unitPrice: item.unitPrice,
           }))
         : [{ ...emptyItem }],
+    materials:
+      budget.materials && budget.materials.length > 0
+        ? budget.materials.map((material) => ({
+            materialId: material.materialId,
+            quantity: material.quantity,
+            unitPrice: material.unitPrice,
+          }))
+        : [],
+    laborHours: budget.laborHours ?? 0,
+    hourlyRate: budget.laborCostPerHour ?? 0,
+    sellerCommission: budget.commissionPercent ?? 13,
+    employeeBonus: budget.bonusPercent ?? 10,
+    shippingCost: budget.shippingCost ?? 0,
+    packagingCost: budget.packagingCost ?? 0,
+    marginType:
+      budget.marginType === "COCINA_55" ? "COCINA_55" : "COMUN_40",
   };
 }
 
@@ -132,6 +224,102 @@ function calculateBudgetTotal(items: BudgetItemInput[]): number {
   return Number(
     items.reduce((acc, item) => acc + calculateItemTotal(item), 0).toFixed(2),
   );
+}
+
+function calculateMaterialLineTotal(quantity: number, unitPrice: number): number {
+  return Number((quantity * unitPrice).toFixed(2));
+}
+
+function normalizePositiveInteger(value: string | number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 1;
+  }
+
+  return Math.max(1, Math.floor(parsed));
+}
+
+function calculateMaterialsTotal(
+  materials: Array<{ quantity: number; unitPrice: number }>,
+): number {
+  return Number(
+    materials
+      .reduce(
+        (acc, material) =>
+          acc + calculateMaterialLineTotal(material.quantity, material.unitPrice),
+        0,
+      )
+      .toFixed(2),
+  );
+}
+
+function calculateBudgetPreview(formState: BudgetFormState): {
+  materialsTotal: number;
+  subtotalCosts: number;
+  commissionAmount: number;
+  bonusAmount: number;
+  projectCost: number;
+  marginPercent: number;
+  profitAmount: number;
+  itemUnitPrice: number;
+  itemsTotal: number;
+  finalTotal: number;
+} {
+  const itemsTotal = calculateBudgetTotal(formState.items);
+  const materialsTotal = calculateMaterialsTotal(formState.materials);
+  const hasCostInputs =
+    materialsTotal > 0 ||
+    formState.laborHours > 0 ||
+    formState.hourlyRate > 0 ||
+    formState.shippingCost > 0 ||
+    formState.packagingCost > 0;
+  const mainMaterialsCost = materialsTotal > 0 ? materialsTotal : hasCostInputs ? 0 : itemsTotal;
+  const derivedLaborCost = Number(
+    (formState.laborHours * formState.hourlyRate).toFixed(2),
+  );
+  const subtotalCosts = Number(
+    (
+      mainMaterialsCost +
+      derivedLaborCost +
+      formState.shippingCost +
+      formState.packagingCost
+    ).toFixed(2),
+  );
+  const commissionAmount = Number(
+    ((subtotalCosts * formState.sellerCommission) / 100).toFixed(2),
+  );
+  const bonusAmount = Number(
+    ((subtotalCosts * formState.employeeBonus) / 100).toFixed(2),
+  );
+  const projectCost = Number(
+    (subtotalCosts + commissionAmount + bonusAmount).toFixed(2),
+  );
+  const marginPercent = formState.marginType === "COCINA_55" ? 55 : 40;
+  const profitAmount = Number(
+    ((projectCost * marginPercent) / 100).toFixed(2),
+  );
+  const itemUnitPrice = Number((projectCost + profitAmount).toFixed(2));
+  const itemQuantityMultiplier = Math.max(
+    1,
+    formState.items.reduce((acc, item) => acc + normalizePositiveInteger(item.quantity), 0),
+  );
+  const multipliedItemsTotal = Number(
+    (itemUnitPrice * itemQuantityMultiplier).toFixed(2),
+  );
+  const finalTotal = hasCostInputs ? multipliedItemsTotal : itemUnitPrice;
+
+  return {
+    materialsTotal: mainMaterialsCost,
+    subtotalCosts,
+    commissionAmount,
+    bonusAmount,
+    projectCost,
+    marginPercent,
+    profitAmount,
+    itemUnitPrice,
+    itemsTotal: finalTotal,
+    finalTotal,
+  };
 }
 
 function labelAuditReason(reason: BudgetPricingAuditEntry["reason"]): string {
@@ -194,6 +382,7 @@ export function BudgetsPage() {
   const [auditTrail, setAuditTrail] = useState<BudgetPricingAuditEntry[]>([]);
   const [isAuditLoading, setIsAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [openBudgetMenuId, setOpenBudgetMenuId] = useState<string | null>(null);
   const [acceptModal, setAcceptModal] =
     useState<BudgetAcceptModalState | null>(null);
   const [acceptError, setAcceptError] = useState<string | null>(null);
@@ -208,8 +397,19 @@ export function BudgetsPage() {
   const [rejectError, setRejectError] = useState<string | null>(null);
   const acceptTriggerRef = useRef<HTMLButtonElement | null>(null);
   const rejectTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const budgetMenuRef = useRef<HTMLDivElement | null>(null);
   const acceptClientNameInputRef = useRef<HTMLInputElement | null>(null);
   const rejectReasonInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [materialSearch, setMaterialSearch] = useState("");
+  const [materialCatalog, setMaterialCatalog] = useState<MaterialItem[]>([]);
+  const [isMaterialCatalogLoading, setIsMaterialCatalogLoading] = useState(false);
+  const [materialCatalogError, setMaterialCatalogError] = useState<string | null>(null);
+  const [isHoursPopupOpen, setIsHoursPopupOpen] = useState(false);
+  const [isHoursPopupMinimized, setIsHoursPopupMinimized] = useState(false);
+  const [isBudgetFormOpen, setIsBudgetFormOpen] = useState(false);
+  const [hourTasks, setHourTasks] = useState<HourTask[]>(
+    DEFAULT_HOUR_TASKS.map((task) => ({ ...task })),
+  );
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
@@ -396,6 +596,74 @@ export function BudgetsPage() {
   }, [rows, selectedBudgetId]);
 
   useEffect(() => {
+    let active = true;
+
+    const loadMaterials = async () => {
+      setIsMaterialCatalogLoading(true);
+      setMaterialCatalogError(null);
+      try {
+        const result = await getMaterialsApi({
+          page: 1,
+          limit: 50,
+          search: materialSearch.trim() || undefined,
+          activeOnly: true,
+        });
+
+        if (!active) {
+          return;
+        }
+
+        setMaterialCatalog(result.items);
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+
+        setMaterialCatalogError(
+          getApiErrorInfo(error, "No se pudieron cargar los materiales").message,
+        );
+        setMaterialCatalog([]);
+      } finally {
+        if (active) {
+          setIsMaterialCatalogLoading(false);
+        }
+      }
+    };
+
+    void loadMaterials();
+
+    return () => {
+      active = false;
+    };
+  }, [materialSearch]);
+
+  useEffect(() => {
+    if (!openBudgetMenuId) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!budgetMenuRef.current?.contains(event.target as Node)) {
+        setOpenBudgetMenuId(null);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenBudgetMenuId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openBudgetMenuId]);
+
+  useEffect(() => {
     if (!selectedBudgetId) {
       return;
     }
@@ -454,12 +722,14 @@ export function BudgetsPage() {
   }, [rows]);
 
   const setPage = (next: number) => {
+    setOpenBudgetMenuId(null);
     const params = new URLSearchParams(searchParams);
     params.set("page", String(next));
     setSearchParams(params);
   };
 
   const setFilter = (key: string, value: string) => {
+    setOpenBudgetMenuId(null);
     const params = new URLSearchParams(searchParams);
 
     if (value) {
@@ -472,24 +742,9 @@ export function BudgetsPage() {
     setSearchParams(params);
   };
 
-  const startCreate = () => {
-    setEditingBudgetId(null);
-    setSelectedBudgetId(null);
-    setFormState(emptyFormState);
-    setFormError(null);
-    setActionFeedback(null);
-  };
-
-  const startEdit = (budget: BudgetRecord) => {
-    setEditingBudgetId(budget._id);
-    setSelectedBudgetId(budget._id);
-    setFormState(buildFormFromBudget(budget));
-    setFormError(null);
-    setActionFeedback(null);
-  };
-
   const selectBudget = (budgetId: string) => {
     setSelectedBudgetId(budgetId);
+    setOpenBudgetMenuId(null);
 
     const params = new URLSearchParams(searchParams);
     params.set("budgetId", budgetId);
@@ -508,10 +763,13 @@ export function BudgetsPage() {
     field: keyof BudgetItemInput,
     value: string | number,
   ) => {
+    const nextValue =
+      field === "quantity" ? normalizePositiveInteger(value) : value;
+
     setFormState((current) => ({
       ...current,
       items: current.items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [field]: value } : item,
+        itemIndex === index ? { ...item, [field]: nextValue } : item,
       ),
     }));
   };
@@ -524,6 +782,100 @@ export function BudgetsPage() {
           ? current.items.filter((_, itemIndex) => itemIndex !== index)
           : current.items,
     }));
+  };
+
+  const appendMaterial = async (material: MaterialItem) => {
+    const existing = formState.materials.find(
+      (entry) => entry.materialId === material.id,
+    );
+
+    if (existing) {
+      setFormState((current) => ({
+        ...current,
+        materials: current.materials.map((entry) =>
+          entry.materialId === material.id
+            ? {
+                ...entry,
+                quantity: normalizePositiveInteger(entry.quantity + 1),
+              }
+            : entry,
+        ),
+      }));
+      return;
+    }
+
+    setFormState((current) => ({
+      ...current,
+      materials: [
+        ...current.materials,
+        {
+          materialId: material.id,
+          quantity: 1,
+          unitPrice: material.unitPrice ?? 0,
+        },
+      ],
+    }));
+  };
+
+  const updateMaterial = (
+    materialId: string,
+    field: "quantity",
+    value: number,
+  ) => {
+    setFormState((current) => ({
+      ...current,
+      materials: current.materials.map((entry) => {
+        if (entry.materialId !== materialId) {
+          return entry;
+        }
+
+        return { ...entry, [field]: normalizePositiveInteger(value) };
+      }),
+    }));
+  };
+
+  const removeMaterial = (materialId: string) => {
+    setFormState((current) => ({
+      ...current,
+      materials: current.materials.filter(
+        (entry) => entry.materialId !== materialId,
+      ),
+    }));
+  };
+
+  const totalHoursFromTasks = useMemo(
+    () => Number(hourTasks.reduce((acc, task) => acc + task.hours, 0).toFixed(2)),
+    [hourTasks],
+  );
+
+  const openHoursPopup = () => {
+    setHourTasks((current) => {
+      if (current.length > 0) {
+        return current;
+      }
+      return DEFAULT_HOUR_TASKS.map((task) => ({ ...task }));
+    });
+    setIsHoursPopupMinimized(false);
+    setIsHoursPopupOpen(true);
+  };
+
+  const applyHourTasksToForm = () => {
+    setFormState((current) => ({
+      ...current,
+      laborHours: totalHoursFromTasks,
+    }));
+    setIsHoursPopupOpen(false);
+    setIsHoursPopupMinimized(false);
+  };
+
+  const updateHourTask = (index: number, value: number) => {
+    setHourTasks((current) =>
+      current.map((task, taskIndex) =>
+        taskIndex === index
+          ? { ...task, hours: Number.isFinite(value) ? Math.max(0, value) : 0 }
+          : task,
+      ),
+    );
   };
 
   const refreshList = async () => {
@@ -541,24 +893,95 @@ export function BudgetsPage() {
     }
   };
 
+  const openBudgetForm = () => {
+    setIsBudgetFormOpen(true);
+  };
+
+  const closeBudgetForm = () => {
+    setIsBudgetFormOpen(false);
+    setEditingBudgetId(null);
+    setFormError(null);
+  };
+
+  const startCreate = () => {
+    setEditingBudgetId(null);
+    setSelectedBudgetId(null);
+    setOpenBudgetMenuId(null);
+    setFormState(emptyFormState);
+    setFormError(null);
+    setActionFeedback(null);
+    openBudgetForm();
+  };
+
+  const startEdit = (budget: BudgetRecord) => {
+    setEditingBudgetId(budget._id);
+    setSelectedBudgetId(budget._id);
+    setOpenBudgetMenuId(null);
+    setFormState(buildFormFromBudget(budget));
+    setFormError(null);
+    setActionFeedback(null);
+    openBudgetForm();
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSaving(true);
     setFormError(null);
 
+    const budgetPreview = calculateBudgetPreview(formState);
+    const defaultItemDescription = formState.title.trim() || "Presupuesto";
+
+    const normalizedItems = formState.items.map((item) => ({
+      description: item.description.trim() || defaultItemDescription,
+      quantity: normalizePositiveInteger(item.quantity),
+      unitPrice: budgetPreview.itemUnitPrice,
+    }));
+
+    const itemsToPersist = normalizedItems
+      .filter(
+        (item) =>
+          item.quantity > 0 &&
+          item.unitPrice >= 0,
+      )
+      .map((item) => ({
+        ...item,
+      }));
+
     const payload = {
       clientId: formState.clientId.trim() || undefined,
       prospectName: formState.prospectName.trim() || undefined,
+      prospectLocalidad: formState.prospectLocalidad.trim() || undefined,
+      prospectContacto: formState.prospectContacto.trim() || undefined,
+      prospectDireccion: formState.prospectDireccion.trim() || undefined,
       title: formState.title.trim(),
       description: formState.description.trim() || undefined,
       currency: formState.currency.trim() || "ARS",
-      items: formState.items
-        .filter((item) => item.description.trim().length > 0)
-        .map((item) => ({
-          description: item.description.trim(),
-          quantity: Number(item.quantity),
-          unitPrice: Number(item.unitPrice),
-        })),
+      items: itemsToPersist,
+      materials: formState.materials
+        .map((material) => ({
+          materialId: material.materialId,
+          quantity: normalizePositiveInteger(material.quantity),
+        }))
+        .filter(
+          (material) =>
+            material.materialId.trim().length > 0 &&
+            material.quantity > 0,
+        ),
+      laborHours: Number(formState.laborHours),
+      hourlyRate: Number(formState.hourlyRate),
+      sellerCommission: Number(formState.sellerCommission),
+      employeeBonus: Number(formState.employeeBonus),
+      shippingCost: Number(formState.shippingCost),
+      packagingCost: Number(formState.packagingCost),
+      marginType: formState.marginType,
+      enableCommercialPricing:
+        formState.materials.length > 0 ||
+        Number(formState.hourlyRate) > 0 ||
+        Number(formState.sellerCommission) > 0 ||
+        Number(formState.employeeBonus) > 0 ||
+        Number(formState.laborHours) > 0 ||
+        Number(formState.shippingCost) > 0 ||
+        Number(formState.packagingCost) > 0,
       status: formState.status,
     };
 
@@ -568,8 +991,20 @@ export function BudgetsPage() {
       return;
     }
 
-    if (payload.items.length === 0) {
-      setFormError("Agrega al menos un item al presupuesto");
+    if (payload.items.length === 0 && payload.materials.length === 0) {
+      setFormError(
+        "Agrega al menos un item valido o un material con cantidad para el presupuesto",
+      );
+      setIsSaving(false);
+      return;
+    }
+
+    const estimatedTotal = budgetPreview.finalTotal;
+
+    if (estimatedTotal <= 0) {
+      setFormError(
+        "El monto total del presupuesto debe ser mayor a 0 para poder guardarlo",
+      );
       setIsSaving(false);
       return;
     }
@@ -577,10 +1012,23 @@ export function BudgetsPage() {
     try {
       if (editingBudgetId) {
         await reviseBudgetApi(editingBudgetId, {
+          prospectName: payload.prospectName,
+          prospectLocalidad: payload.prospectLocalidad,
+          prospectContacto: payload.prospectContacto,
+          prospectDireccion: payload.prospectDireccion,
           title: payload.title,
           description: payload.description,
           currency: payload.currency,
           items: payload.items,
+          materials: payload.materials,
+          laborHours: payload.laborHours,
+          hourlyRate: payload.hourlyRate,
+          sellerCommission: payload.sellerCommission,
+          employeeBonus: payload.employeeBonus,
+          shippingCost: payload.shippingCost,
+          packagingCost: payload.packagingCost,
+          marginType: payload.marginType,
+          enableCommercialPricing: payload.enableCommercialPricing,
           status: payload.status,
         });
       } else {
@@ -588,7 +1036,8 @@ export function BudgetsPage() {
       }
 
       await refreshList();
-      startCreate();
+      closeBudgetForm();
+      setFormState(emptyFormState);
     } catch (error) {
       setFormError(
         getApiErrorInfo(error, "No se pudo guardar el presupuesto").message,
@@ -638,12 +1087,14 @@ export function BudgetsPage() {
     setAcceptError(null);
     setAcceptInput({
       clientName: budget.prospectName ?? undefined,
-      contactName: budget.prospectContactName ?? undefined,
+      contactName:
+        budget.prospectContacto ?? budget.prospectContactName ?? undefined,
       email: budget.prospectEmail ?? undefined,
-      phone: budget.prospectPhone ?? undefined,
+      phone: budget.prospectPhone ?? budget.prospectContacto ?? undefined,
       notes: budget.prospectNotes ?? undefined,
       projectName: budget.title,
       projectDescription: budget.description ?? undefined,
+      collectionDueDate: getDefaultCollectionDueDateLocal(),
     });
     setAcceptModal({ budget, withDiscount });
   };
@@ -681,6 +1132,13 @@ export function BudgetsPage() {
     setAcceptError(null);
 
     try {
+      const projectDeliveryDate = toIsoDateTimeOrUndefined(
+        acceptInput.projectDeliveryDate,
+      );
+      const collectionDueDate = toIsoDateTimeOrUndefined(
+        acceptInput.collectionDueDate,
+      );
+
       const payload: AcceptBudgetInput = {
         ...(acceptInput.clientName?.trim()
           ? { clientName: acceptInput.clientName.trim() }
@@ -703,12 +1161,8 @@ export function BudgetsPage() {
         ...(acceptInput.projectDescription?.trim()
           ? { projectDescription: acceptInput.projectDescription.trim() }
           : {}),
-        ...(acceptInput.projectDeliveryDate?.trim()
-          ? { projectDeliveryDate: acceptInput.projectDeliveryDate.trim() }
-          : {}),
-        ...(acceptInput.collectionDueDate?.trim()
-          ? { collectionDueDate: acceptInput.collectionDueDate.trim() }
-          : {}),
+        ...(projectDeliveryDate ? { projectDeliveryDate } : {}),
+        ...(collectionDueDate ? { collectionDueDate } : {}),
         ...(acceptInput.collectionNotes?.trim()
           ? { collectionNotes: acceptInput.collectionNotes.trim() }
           : {}),
@@ -736,9 +1190,15 @@ export function BudgetsPage() {
           trigger.focus();
         }, 0);
       }
+
+      const stockAlertSuffix =
+        result.stockAlerts && result.stockAlerts.length > 0
+          ? ` Reserva parcial en ${result.stockAlerts.length} material(es) por faltante de stock.`
+          : "";
+
       setActionFeedback({
         tone: "success",
-        message: `${acceptModal.withDiscount ? "Aceptado con descuento" : "Presupuesto aceptado"}. Proyecto ${result.projectId.slice(-8)} creado con conversión completa.`,
+        message: `${acceptModal.withDiscount ? "Aceptado con descuento" : "Presupuesto aceptado"}. Proyecto ${result.projectId.slice(-8)} creado con conversión completa.${stockAlertSuffix}`,
       });
     } catch (error) {
       setAcceptError(
@@ -870,6 +1330,10 @@ export function BudgetsPage() {
     }
 
     await handleDelete(budget);
+  };
+
+  const toggleBudgetMenu = (budgetId: string) => {
+    setOpenBudgetMenuId((current) => (current === budgetId ? null : budgetId));
   };
 
   const handleRecalculate = async (budget: BudgetRecord) => {
@@ -1114,101 +1578,137 @@ export function BudgetsPage() {
                       <td>{formatMoney(budget.total, budget.currency)}</td>
                       <td>{formatDate(budget.updatedAt)}</td>
                       <td>
-                        <div className="budget-actions">
-                          <button
-                            type="button"
-                            className="btn btn-tertiary"
-                            disabled={!canRecalculate}
-                            onClick={() => void handleRecalculate(budget)}
-                          >
-                            {isActionRunning
-                              ? "Procesando..."
-                              : "Recalcular"}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            disabled={!canApplyRecalculation}
-                            onClick={() => void handleApplyRecalculate(budget)}
-                          >
-                            Aplicar recálculo
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            disabled={!canAccept}
-                            onClick={(event) =>
-                              openAcceptModal(
-                                budget,
-                                false,
-                                event.currentTarget,
-                              )
-                            }
-                          >
-                            Aceptar
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            disabled={!canAcceptWithDiscount}
-                            onClick={(event) =>
-                              openAcceptModal(
-                                budget,
-                                true,
-                                event.currentTarget,
-                              )
-                            }
-                          >
-                            Aceptar c/descuento
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            disabled={!canReject}
-                            onClick={(event) =>
-                              openRejectModal(budget, event.currentTarget)
-                            }
-                          >
-                            Rechazar
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            disabled={!canMarkSent}
-                            onClick={() =>
-                              void handleStatusChange(budget, "SENT")
-                            }
-                          >
-                            Marcar enviado
-                          </button>
+                        <div
+                          className="budget-actions"
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           <div
-                            className="row-action-buttons"
-                            onClick={(event) => event.stopPropagation()}
+                            className="budget-actions-menu"
+                            ref={
+                              openBudgetMenuId === budget._id
+                                ? budgetMenuRef
+                                : undefined
+                            }
                           >
                             <button
                               type="button"
-                              className="btn btn-tertiary btn-emoji-action"
-                              disabled={isActionRunning}
-                              title="Editar"
-                              aria-label="Editar presupuesto"
-                              onClick={() =>
-                                void handleBudgetTableAction(budget, "edit")
-                              }
+                              className="btn btn-tertiary budget-actions-trigger"
+                              aria-label="Abrir acciones del presupuesto"
+                              aria-expanded={openBudgetMenuId === budget._id}
+                              onClick={() => toggleBudgetMenu(budget._id)}
                             >
-                              ✏️
+                              Acciones
                             </button>
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-emoji-action"
-                              disabled={isActionRunning}
-                              title="Eliminar"
-                              aria-label="Eliminar presupuesto"
-                              onClick={() =>
-                                void handleBudgetTableAction(budget, "delete")
-                              }
-                            >
-                              🗑️
-                            </button>
+                            {openBudgetMenuId === budget._id && (
+                              <div className="budget-actions-dropdown" role="menu">
+                                <button
+                                  type="button"
+                                  className="budget-actions-dropdown__item"
+                                  role="menuitem"
+                                  disabled={!canRecalculate}
+                                  onClick={() => {
+                                    setOpenBudgetMenuId(null);
+                                    void handleRecalculate(budget);
+                                  }}
+                                >
+                                  {isActionRunning
+                                    ? "Procesando..."
+                                    : "Recalcular"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="budget-actions-dropdown__item"
+                                  role="menuitem"
+                                  disabled={!canApplyRecalculation}
+                                  onClick={() => {
+                                    setOpenBudgetMenuId(null);
+                                    void handleApplyRecalculate(budget);
+                                  }}
+                                >
+                                  Aplicar recálculo
+                                </button>
+                                <button
+                                  type="button"
+                                  className="budget-actions-dropdown__item"
+                                  role="menuitem"
+                                  disabled={!canAccept}
+                                  onClick={(event) => {
+                                    setOpenBudgetMenuId(null);
+                                    openAcceptModal(
+                                      budget,
+                                      false,
+                                      event.currentTarget,
+                                    );
+                                  }}
+                                >
+                                  Aceptar
+                                </button>
+                                <button
+                                  type="button"
+                                  className="budget-actions-dropdown__item"
+                                  role="menuitem"
+                                  disabled={!canAcceptWithDiscount}
+                                  onClick={(event) => {
+                                    setOpenBudgetMenuId(null);
+                                    openAcceptModal(
+                                      budget,
+                                      true,
+                                      event.currentTarget,
+                                    );
+                                  }}
+                                >
+                                  Aceptar c/descuento
+                                </button>
+                                <button
+                                  type="button"
+                                  className="budget-actions-dropdown__item"
+                                  role="menuitem"
+                                  disabled={!canReject}
+                                  onClick={(event) => {
+                                    setOpenBudgetMenuId(null);
+                                    openRejectModal(budget, event.currentTarget);
+                                  }}
+                                >
+                                  Rechazar
+                                </button>
+                                <button
+                                  type="button"
+                                  className="budget-actions-dropdown__item"
+                                  role="menuitem"
+                                  disabled={!canMarkSent}
+                                  onClick={() => {
+                                    setOpenBudgetMenuId(null);
+                                    void handleStatusChange(budget, "SENT");
+                                  }}
+                                >
+                                  Marcar enviado
+                                </button>
+                                <button
+                                  type="button"
+                                  className="budget-actions-dropdown__item"
+                                  role="menuitem"
+                                  disabled={isActionRunning}
+                                  onClick={() => {
+                                    setOpenBudgetMenuId(null);
+                                    void handleBudgetTableAction(budget, "edit");
+                                  }}
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  type="button"
+                                  className="budget-actions-dropdown__item budget-actions-dropdown__item--danger"
+                                  role="menuitem"
+                                  disabled={isActionRunning}
+                                  onClick={() => {
+                                    setOpenBudgetMenuId(null);
+                                    void handleBudgetTableAction(budget, "delete");
+                                  }}
+                                >
+                                  Eliminar
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -1306,6 +1806,18 @@ export function BudgetsPage() {
                           : "-")}
                     </strong>
                   </div>
+                  <div>
+                    <span>Localidad</span>
+                    <strong>{selectedBudgetView.prospectLocalidad ?? "-"}</strong>
+                  </div>
+                  <div>
+                    <span>Contacto</span>
+                    <strong>{selectedBudgetView.prospectContacto ?? "-"}</strong>
+                  </div>
+                  <div>
+                    <span>Direccion</span>
+                    <strong>{selectedBudgetView.prospectDireccion ?? "-"}</strong>
+                  </div>
                 </div>
 
                 <div className="budget-detail-context">
@@ -1390,6 +1902,62 @@ export function BudgetsPage() {
                   ))}
                 </div>
 
+                {selectedBudgetView.materials && selectedBudgetView.materials.length > 0 && (
+                  <div className="budget-detail__items">
+                    <h4>Materiales presupuestados</h4>
+                    {selectedBudgetView.materials.map((material) => (
+                      <div
+                        key={`${material.materialId}-${material.total}`}
+                        className="budget-detail__item"
+                      >
+                        <div>
+                          <strong>Material {material.materialId.slice(-8)}</strong>
+                          <small>
+                            {material.quantity} x {formatMoney(material.unitPrice, selectedBudgetView.currency)}
+                          </small>
+                        </div>
+                        <strong>{formatMoney(material.total, selectedBudgetView.currency)}</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="budget-detail__items">
+                  <h4>Composición comercial</h4>
+                  <div className="budget-detail__item">
+                    <span>Subtotal</span>
+                    <strong>{formatMoney(selectedBudgetView.subtotal, selectedBudgetView.currency)}</strong>
+                  </div>
+                  <div className="budget-detail__item">
+                    <span>Mano de obra</span>
+                    <strong>{formatMoney(selectedBudgetView.laborCost ?? 0, selectedBudgetView.currency)}</strong>
+                  </div>
+                  <div className="budget-detail__item">
+                    <span>Comisión vendedor</span>
+                    <strong>{formatMoney(selectedBudgetView.commissionAmount ?? 0, selectedBudgetView.currency)}</strong>
+                  </div>
+                  <div className="budget-detail__item">
+                    <span>Bono empleado</span>
+                    <strong>{formatMoney(selectedBudgetView.bonusAmount ?? 0, selectedBudgetView.currency)}</strong>
+                  </div>
+                  <div className="budget-detail__item">
+                    <span>Envío</span>
+                    <strong>{formatMoney(selectedBudgetView.shippingCost ?? 0, selectedBudgetView.currency)}</strong>
+                  </div>
+                  <div className="budget-detail__item">
+                    <span>Embalaje</span>
+                    <strong>{formatMoney(selectedBudgetView.packagingCost ?? 0, selectedBudgetView.currency)}</strong>
+                  </div>
+                  <div className="budget-detail__item">
+                    <span>Ganancia ({(selectedBudgetView.marginPercent ?? 0).toFixed(2)}%)</span>
+                    <strong>{formatMoney(selectedBudgetView.marginAmount ?? 0, selectedBudgetView.currency)}</strong>
+                  </div>
+                  <div className="budget-detail__item">
+                    <span>Precio final</span>
+                    <strong>{formatMoney(selectedBudgetView.finalPrice ?? selectedBudgetView.total, selectedBudgetView.currency)}</strong>
+                  </div>
+                </div>
+
                 <div className="budget-detail__items">
                   <h4>Trazabilidad de precio</h4>
                   {isAuditLoading && <p className="text-muted">Cargando auditoría...</p>}
@@ -1423,7 +1991,17 @@ export function BudgetsPage() {
             )}
           </article>
 
-          <article className="panel budget-form-panel">
+          <FormPopup
+            isOpen={isBudgetFormOpen}
+            title={editingBudgetId ? "Revisar presupuesto" : "Nuevo presupuesto"}
+            subtitle={
+              editingBudgetId
+                ? "Genera una revision a partir del presupuesto seleccionado."
+                : "Carga un presupuesto nuevo y deja listo el flujo comercial."
+            }
+            onRequestClose={closeBudgetForm}
+            onMinimize={closeBudgetForm}
+          >
             <div className="clients-form-header">
               <div>
                 <h3>
@@ -1453,36 +2031,63 @@ export function BudgetsPage() {
               onSubmit={(event) => void handleSubmit(event)}
             >
               <label>
-                <span>ID cliente</span>
+                <span>Prospecto</span>
                 <input
                   type="text"
-                  value={formState.clientId}
+                  value={formState.prospectName}
                   onChange={(event) =>
                     setFormState((current) => ({
                       ...current,
-                      clientId: event.target.value,
+                      prospectName: event.target.value,
                     }))
                   }
-                  disabled={Boolean(editingBudgetId)}
-                  placeholder="Opcional si se carga prospecto"
+                  placeholder="Nombre de consulta o titular"
                 />
               </label>
-              {!editingBudgetId && (
+              <div className="budget-form__row">
                 <label>
-                  <span>Prospecto</span>
+                  <span>Localidad</span>
                   <input
                     type="text"
-                    value={formState.prospectName}
+                    value={formState.prospectLocalidad}
                     onChange={(event) =>
                       setFormState((current) => ({
                         ...current,
-                        prospectName: event.target.value,
+                        prospectLocalidad: event.target.value,
                       }))
                     }
-                    placeholder="Nombre de consulta o titular"
+                    placeholder="Localidad del cliente"
                   />
                 </label>
-              )}
+                <label>
+                  <span>Contacto</span>
+                  <input
+                    type="text"
+                    value={formState.prospectContacto}
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        prospectContacto: event.target.value,
+                      }))
+                    }
+                    placeholder="Persona o referencia de contacto"
+                  />
+                </label>
+              </div>
+              <label>
+                <span>Direccion</span>
+                <input
+                  type="text"
+                  value={formState.prospectDireccion}
+                  onChange={(event) =>
+                    setFormState((current) => ({
+                      ...current,
+                      prospectDireccion: event.target.value,
+                    }))
+                  }
+                  placeholder="Direccion de obra o cliente"
+                />
+              </label>
               <label>
                 <span>Título *</span>
                 <input
@@ -1513,8 +2118,7 @@ export function BudgetsPage() {
               <div className="budget-form__row">
                 <label>
                   <span>Moneda</span>
-                  <input
-                    type="text"
+                  <select
                     value={formState.currency}
                     onChange={(event) =>
                       setFormState((current) => ({
@@ -1522,7 +2126,10 @@ export function BudgetsPage() {
                         currency: event.target.value,
                       }))
                     }
-                  />
+                  >
+                    <option value="ARS">ARS</option>
+                    <option value="USD">USD</option>
+                  </select>
                 </label>
                 <label>
                   <span>Estado</span>
@@ -1531,17 +2138,309 @@ export function BudgetsPage() {
                     onChange={(event) =>
                       setFormState((current) => ({
                         ...current,
-                        status: event.target.value as BudgetStatus,
+                        status: event.target.value as EditableBudgetStatus,
                       }))
                     }
                   >
                     <option value="DRAFT">Borrador</option>
                     <option value="SENT">Enviado</option>
-                    <option value="APPROVED">Aprobado</option>
                     <option value="REJECTED">Rechazado</option>
                     <option value="CANCELED">Cancelado</option>
                   </select>
                 </label>
+              </div>
+
+              <div className="budget-items">
+                <div className="budget-items__header">
+                  <h4>Materiales (Stock)</h4>
+                </div>
+
+                <label>
+                  <span>Buscar material</span>
+                  <input
+                    type="search"
+                    value={materialSearch}
+                    onChange={(event) => setMaterialSearch(event.target.value)}
+                    placeholder="Nombre, SKU o tipo"
+                  />
+                </label>
+
+                {isMaterialCatalogLoading && (
+                  <p className="text-muted">Cargando materiales...</p>
+                )}
+                {!isMaterialCatalogLoading && materialCatalogError && (
+                  <p className="text-negative">{materialCatalogError}</p>
+                )}
+
+                {!isMaterialCatalogLoading && !materialCatalogError && (
+                  <div className="budget-detail__items">
+                    {materialCatalog.length === 0 ? (
+                      <p className="text-muted">
+                        No hay materiales activos para el filtro actual.
+                      </p>
+                    ) : (
+                      materialCatalog.slice(0, 12).map((material) => {
+                        const materialAlreadySelected = formState.materials.some(
+                          (entry) => entry.materialId === material.id,
+                        );
+                        return (
+                          <div
+                            key={material.id}
+                            className="budget-detail__item"
+                          >
+                            <div>
+                              <strong>{material.name}</strong>
+                              <small>
+                                SKU {material.sku ?? "-"} · Stock{" "}
+                                {material.currentStock} {material.unit} · Precio{" "}
+                                {formatMoney(
+                                  material.unitPrice ?? 0,
+                                  formState.currency,
+                                )}
+                              </small>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-tertiary"
+                              onClick={() => void appendMaterial(material)}
+                            >
+                              {materialAlreadySelected ? "+1" : "Agregar"}
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+
+                {formState.materials.length > 0 &&
+                  formState.materials.map((material) => {
+                    const materialMeta = materialCatalog.find(
+                      (catalogItem) => catalogItem.id === material.materialId,
+                    );
+
+                    return (
+                      <div key={material.materialId} className="budget-item-row">
+                        <label>
+                          <span>Material</span>
+                          <input
+                            type="text"
+                            value={
+                              materialMeta?.name ??
+                              `Material ${material.materialId.slice(-8)}`
+                            }
+                            disabled
+                          />
+                        </label>
+                        <label>
+                          <span>Cantidad</span>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={material.quantity}
+                            onChange={(event) =>
+                              updateMaterial(
+                                material.materialId,
+                                "quantity",
+                                Number(event.target.value),
+                              )
+                            }
+                          />
+                        </label>
+                        <div className="budget-item-row__total">
+                          <span>Precio unitario</span>
+                          <strong>
+                            {formatMoney(material.unitPrice, formState.currency)}
+                          </strong>
+                        </div>
+                        <div className="budget-item-row__total">
+                          <span>Total</span>
+                          <strong>
+                            {formatMoney(
+                              calculateMaterialLineTotal(
+                                material.quantity,
+                                material.unitPrice,
+                              ),
+                              formState.currency,
+                            )}
+                          </strong>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => removeMaterial(material.materialId)}
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              <div className="budget-form__row">
+                <label>
+                  <span>Horas de mano de obra</span>
+                  <input type="number" value={formState.laborHours} disabled />
+                  <button
+                    type="button"
+                    className="btn btn-tertiary"
+                    onClick={openHoursPopup}
+                  >
+                    Editar horas por tarea
+                  </button>
+                </label>
+                <label>
+                  <span>Cuota horaria</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={formState.hourlyRate}
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        hourlyRate: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+
+              <div className="budget-form__row">
+                <label>
+                  <span>Costo de envío</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={formState.shippingCost}
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        shippingCost: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Costo de embalaje</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={formState.packagingCost}
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        packagingCost: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Comisión vendedor (%)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={formState.sellerCommission}
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        sellerCommission: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+
+              <div className="budget-form__row">
+                <label>
+                  <span>Bono empleado (%)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={formState.employeeBonus}
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        employeeBonus: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Margen final</span>
+                  <select
+                    value={formState.marginType}
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        marginType: event.target.value as
+                          | "COMUN_40"
+                          | "COCINA_55",
+                      }))
+                    }
+                  >
+                    <option value="COMUN_40">Común 40%</option>
+                    <option value="COCINA_55">Cocina 55%</option>
+                  </select>
+                </label>
+              </div>
+
+              <p className="budget-form__note">
+                Comisión y bono se calculan como porcentaje del subtotal de
+                costos (materiales + mano de obra + envío + embalaje).
+              </p>
+
+              <div className="budget-summary">
+                <span>Resumen comercial (estimado)</span>
+                <strong>
+                  {formatMoney(calculateBudgetPreview(formState).finalTotal, formState.currency)}
+                </strong>
+              </div>
+
+              <div className="budget-detail__items">
+                <div className="budget-detail__item">
+                  <span>Base materiales/items</span>
+                  <strong>
+                    {formatMoney(calculateBudgetPreview(formState).materialsTotal, formState.currency)}
+                  </strong>
+                </div>
+                <div className="budget-detail__item">
+                  <span>Subtotal de costos</span>
+                  <strong>
+                    {formatMoney(calculateBudgetPreview(formState).subtotalCosts, formState.currency)}
+                  </strong>
+                </div>
+                <div className="budget-detail__item">
+                  <span>Comisión vendedor</span>
+                  <strong>
+                    {formatMoney(calculateBudgetPreview(formState).commissionAmount, formState.currency)}
+                  </strong>
+                </div>
+                <div className="budget-detail__item">
+                  <span>Bono empleado</span>
+                  <strong>
+                    {formatMoney(calculateBudgetPreview(formState).bonusAmount, formState.currency)}
+                  </strong>
+                </div>
+                <div className="budget-detail__item">
+                  <span>Costo del proyecto</span>
+                  <strong>
+                    {formatMoney(calculateBudgetPreview(formState).projectCost, formState.currency)}
+                  </strong>
+                </div>
+                <div className="budget-detail__item">
+                  <span>
+                    Margen ({calculateBudgetPreview(formState).marginPercent}%)
+                  </span>
+                  <strong>
+                    {formatMoney(calculateBudgetPreview(formState).profitAmount, formState.currency)}
+                  </strong>
+                </div>
               </div>
 
               <div className="budget-items">
@@ -1574,8 +2473,8 @@ export function BudgetsPage() {
                       <span>Cantidad</span>
                       <input
                         type="number"
-                        min={0.0001}
-                        step="0.0001"
+                        min="1"
+                        step="1"
                         value={item.quantity}
                         onChange={(event) =>
                           updateItem(
@@ -1586,27 +2485,23 @@ export function BudgetsPage() {
                         }
                       />
                     </label>
-                    <label>
+                    <div className="budget-item-row__total">
                       <span>Precio unitario</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={item.unitPrice}
-                        onChange={(event) =>
-                          updateItem(
-                            index,
-                            "unitPrice",
-                            Number(event.target.value),
-                          )
-                        }
-                      />
-                    </label>
+                      <strong>
+                        {formatMoney(
+                          calculateBudgetPreview(formState).itemUnitPrice,
+                          formState.currency,
+                        )}
+                      </strong>
+                    </div>
                     <div className="budget-item-row__total">
                       <span>Total</span>
                       <strong>
                         {formatMoney(
-                          calculateItemTotal(item),
+                          calculateMaterialLineTotal(
+                            normalizePositiveInteger(item.quantity),
+                            calculateBudgetPreview(formState).itemUnitPrice,
+                          ),
                           formState.currency,
                         )}
                       </strong>
@@ -1623,15 +2518,10 @@ export function BudgetsPage() {
                 ))}
               </div>
 
-              <div className="budget-summary">
-                <span>Total estimado</span>
-                <strong>
-                  {formatMoney(
-                    calculateBudgetTotal(formState.items),
-                    formState.currency,
-                  )}
-                </strong>
-              </div>
+              <p className="text-muted">
+                El precio final se recalcula en backend con horas x cuota horaria,
+                comisión/bono comercial y margen seleccionado.
+              </p>
 
               {formError && <p className="form-error">{formError}</p>}
 
@@ -1656,9 +2546,90 @@ export function BudgetsPage() {
                 </button>
               </div>
             </form>
-          </article>
+          </FormPopup>
         </div>
       </div>
+
+      {isHoursPopupMinimized ? (
+        <button
+          type="button"
+          className="btn btn-secondary form-popup-restore"
+          onClick={() => {
+            setIsHoursPopupMinimized(false);
+            setIsHoursPopupOpen(true);
+          }}
+        >
+          Restaurar horas ({totalHoursFromTasks})
+        </button>
+      ) : null}
+
+      <FormPopup
+        isOpen={isHoursPopupOpen}
+        title="Detalle de horas"
+        subtitle="Distribuye horas por tarea. Se aplican al campo Horas del presupuesto."
+        onRequestClose={() => setIsHoursPopupOpen(false)}
+        onMinimize={() => {
+          setIsHoursPopupMinimized(true);
+          setIsHoursPopupOpen(false);
+        }}
+      >
+        <form
+          className="budget-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            applyHourTasksToForm();
+          }}
+        >
+          <div className="table-wrapper">
+            <table className="table table-compact">
+              <thead>
+                <tr>
+                  <th>Tarea</th>
+                  <th>Horas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hourTasks.map((task, index) => (
+                  <tr key={task.task}>
+                    <td>{task.task}</td>
+                    <td>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={task.hours}
+                        onChange={(event) =>
+                          updateHourTask(index, Number(event.target.value))
+                        }
+                      />
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <td>
+                    <strong>TOTAL</strong>
+                  </td>
+                  <td>
+                    <strong>{totalHoursFromTasks}</strong>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="clients-form-actions">
+            <button type="submit" className="btn btn-primary">
+              Aplicar horas
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setIsHoursPopupOpen(false)}
+            >
+              Cerrar
+            </button>
+          </div>
+        </form>
+      </FormPopup>
 
       {acceptModal ? (
         <div

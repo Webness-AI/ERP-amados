@@ -48,6 +48,9 @@ export type Budget = AuditableFields & {
   prospectEmail?: string | null;
   prospectPhone?: string | null;
   prospectNotes?: string | null;
+  prospectLocalidad?: string | null;
+  prospectContacto?: string | null;
+  prospectDireccion?: string | null;
   title: string;
   description?: string | null;
   currency: string;
@@ -61,6 +64,7 @@ export type Budget = AuditableFields & {
   bonusPercent: number;
   bonusAmount: number;
   shippingCost: number;
+  packagingCost: number;
   projectCost: number;
   marginType: BudgetMarginType;
   marginPercent: number;
@@ -177,6 +181,24 @@ const budgetSchema = new Schema<Budget>(
       default: null,
       maxlength: 1000,
     },
+    prospectLocalidad: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 180,
+    },
+    prospectContacto: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 140,
+    },
+    prospectDireccion: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 500,
+    },
     title: {
       type: String,
       required: true,
@@ -250,6 +272,12 @@ const budgetSchema = new Schema<Budget>(
       default: 0,
     },
     shippingCost: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
+    },
+    packagingCost: {
       type: Number,
       required: true,
       min: 0,

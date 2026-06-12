@@ -2,6 +2,7 @@ import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react
 import { useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../auth/useAuth";
+import { FormPopup } from "../components/FormPopup";
 import { Pagination } from "../components/Pagination";
 
 import {
@@ -50,6 +51,20 @@ const emptyLine: JournalLineForm = {
   description: "",
 };
 
+type EntryFormSnapshot = {
+  description: string;
+  currency: string;
+  entryDate: string;
+  lines: JournalLineForm[];
+};
+
+const emptyEntrySnapshot: EntryFormSnapshot = {
+  description: "",
+  currency: "ARS",
+  entryDate: "",
+  lines: [{ ...emptyLine }, { ...emptyLine }],
+};
+
 function normalizeMoney(value: number): number {
   return Number(value.toFixed(2));
 }
@@ -90,7 +105,8 @@ export function AccountingPage() {
   );
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [showEntryForm, setShowEntryForm] = useState(false);
+  const [isEntryPopupOpen, setIsEntryPopupOpen] = useState(false);
+  const [isEntryPopupMinimized, setIsEntryPopupMinimized] = useState(false);
   const [entryDescription, setEntryDescription] = useState("");
   const [entryCurrency, setEntryCurrency] = useState("ARS");
   const [entryDate, setEntryDate] = useState("");
@@ -104,6 +120,8 @@ export function AccountingPage() {
   const [showDeletePopup, setShowDeletePopup] = useState(false);
   const [deletePhrase, setDeletePhrase] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [initialEntrySnapshot, setInitialEntrySnapshot] =
+    useState<EntryFormSnapshot>(emptyEntrySnapshot);
 
   const canWrite = user?.role === "ADMIN_GENERAL" || user?.role === "ADMIN";
 
@@ -330,6 +348,55 @@ export function AccountingPage() {
     setEntryLines([{ ...emptyLine }, { ...emptyLine }]);
   };
 
+  const openEntryPopup = () => {
+    resetForm();
+    setInitialEntrySnapshot(emptyEntrySnapshot);
+    setActionError(null);
+    setIsEntryPopupOpen(true);
+    setIsEntryPopupMinimized(false);
+  };
+
+  const handleMinimizeEntryPopup = () => {
+    setIsEntryPopupOpen(false);
+    setIsEntryPopupMinimized(true);
+  };
+
+  const handleRestoreEntryPopup = () => {
+    setIsEntryPopupOpen(true);
+    setIsEntryPopupMinimized(false);
+  };
+
+  const closeAndResetEntryPopup = () => {
+    resetForm();
+    setInitialEntrySnapshot(emptyEntrySnapshot);
+    setIsEntryPopupOpen(false);
+    setIsEntryPopupMinimized(false);
+  };
+
+  const currentEntrySnapshot = useMemo<EntryFormSnapshot>(
+    () => ({
+      description: entryDescription,
+      currency: entryCurrency,
+      entryDate,
+      lines: entryLines,
+    }),
+    [entryCurrency, entryDate, entryDescription, entryLines],
+  );
+
+  const hasUnsavedEntryChanges =
+    JSON.stringify(currentEntrySnapshot) !== JSON.stringify(initialEntrySnapshot);
+
+  const handleRequestCloseEntryPopup = () => {
+    if (
+      hasUnsavedEntryChanges &&
+      !window.confirm("Hay cambios sin guardar. ¿Deseas cerrar y descartarlos?")
+    ) {
+      return;
+    }
+
+    closeAndResetEntryPopup();
+  };
+
   const handleCreateEntry = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setActionError(null);
@@ -394,8 +461,7 @@ export function AccountingPage() {
         lines,
         ...(entryDate ? { entryDate: new Date(entryDate).toISOString() } : {}),
       });
-      resetForm();
-      setShowEntryForm(false);
+      closeAndResetEntryPopup();
       await loadEntries();
       await loadEntryDetail(created._id);
       setSelectedEntryId(created._id);
@@ -505,10 +571,19 @@ export function AccountingPage() {
               <button
                 className="btn btn-secondary"
                 type="button"
-                onClick={() => setShowEntryForm((current) => !current)}
+                onClick={openEntryPopup}
               >
-                {showEntryForm ? "Ocultar formulario" : "Nuevo asiento manual"}
+                Nuevo asiento manual
               </button>
+              {isEntryPopupMinimized && (
+                <button
+                  className="btn btn-tertiary"
+                  type="button"
+                  onClick={handleRestoreEntryPopup}
+                >
+                  Restaurar formulario
+                </button>
+              )}
               <button
                 className="btn btn-tertiary"
                 type="button"
@@ -533,17 +608,14 @@ export function AccountingPage() {
         </div>
       </header>
 
-      {canWrite && showEntryForm && (
-        <article className="panel budget-form-panel">
-          <div className="clients-form-header">
-            <div>
-              <h3>Nuevo asiento manual</h3>
-              <p>
-                Validación de doble partida: Debe y Haber deben coincidir.
-              </p>
-            </div>
-          </div>
-
+      {canWrite && (
+        <FormPopup
+          isOpen={isEntryPopupOpen}
+          title="Nuevo asiento manual"
+          subtitle="Validación de doble partida: Debe y Haber deben coincidir."
+          onMinimize={handleMinimizeEntryPopup}
+          onRequestClose={handleRequestCloseEntryPopup}
+        >
           <form
             className="budget-form"
             onSubmit={(event) => void handleCreateEntry(event)}
@@ -685,7 +757,7 @@ export function AccountingPage() {
               </button>
             </div>
           </form>
-        </article>
+        </FormPopup>
       )}
 
       <div className="kpi-grid">

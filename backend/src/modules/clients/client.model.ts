@@ -12,6 +12,9 @@ export type Client = AuditableFields & {
   email?: string | null;
   phone?: string | null;
   notes?: string | null;
+  localidad?: string | null;
+  contacto?: string | null;
+  direccion?: string | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -50,6 +53,24 @@ const clientSchema = new Schema<Client>(
       trim: true,
       default: null,
       maxlength: 1000,
+    },
+    localidad: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 180,
+    },
+    contacto: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 140,
+    },
+    direccion: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 500,
     },
     isActive: {
       type: Boolean,

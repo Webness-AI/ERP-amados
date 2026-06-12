@@ -20,6 +20,7 @@ import {
   type BudgetPricingSource,
   BudgetPricingAuditModel,
 } from "./budget-pricing-audit.model";
+import { roundMoney } from "../../core/utils/formatting";
 
 type BudgetForAudit = Pick<
   Budget,
@@ -28,6 +29,7 @@ type BudgetForAudit = Pick<
   | "marginType"
   | "laborHours"
   | "shippingCost"
+  | "packagingCost"
   | "laborCostPerHour"
   | "laborCost"
   | "subtotal"
@@ -48,10 +50,6 @@ type CreateBudgetPricingAuditInput = {
   reason: BudgetPricingAuditReason;
   actorId: string;
 };
-
-function roundMoney(value: number): number {
-  return Number(value.toFixed(2));
-}
 
 async function readMaterialPriceContext(materialId: string): Promise<{
   lastKnownUnitCost: number | null;
@@ -202,6 +200,10 @@ function buildBaseSources(budget: BudgetForAudit): BudgetPricingSource[] {
       subtotal: budget.shippingCost,
     },
     {
+      type: BUDGET_PRICING_SOURCE_TYPES.PACKAGING,
+      subtotal: budget.packagingCost,
+    },
+    {
       type: BUDGET_PRICING_SOURCE_TYPES.MARGIN,
       unitPrice: budget.marginPercent,
       subtotal: budget.marginAmount,
@@ -249,6 +251,7 @@ export async function createBudgetPricingAudit(
     marginType: input.budget.marginType,
     laborHours: input.budget.laborHours,
     shippingCost: input.budget.shippingCost,
+    packagingCost: input.budget.packagingCost,
     monthlyFixedTotal,
     laborCostPerHour: input.budget.laborCostPerHour,
     fixedExpenseIds,

@@ -85,6 +85,13 @@ export type BudgetItem = BudgetItemInput & {
   total: number;
 };
 
+export type BudgetMaterial = {
+  materialId: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+};
+
 export type BudgetRecord = {
   _id: string;
   clientId?: string | null;
@@ -93,14 +100,29 @@ export type BudgetRecord = {
   prospectEmail?: string | null;
   prospectPhone?: string | null;
   prospectNotes?: string | null;
+  prospectLocalidad?: string | null;
+  prospectContacto?: string | null;
+  prospectDireccion?: string | null;
   title: string;
   description?: string | null;
   currency: string;
   items: BudgetItem[];
+  materials?: BudgetMaterial[];
+  laborHours?: number;
   laborCostPerHour?: number;
   laborCost?: number;
+  materialsCost?: number;
+  commissionPercent?: number;
+  commissionAmount?: number;
+  bonusPercent?: number;
+  bonusAmount?: number;
+  shippingCost?: number;
+  packagingCost?: number;
   projectCost?: number;
+  marginType?: string;
+  marginPercent?: number;
   marginAmount?: number;
+  finalPrice?: number;
   subtotal: number;
   total: number;
   rejectionCount?: number;
@@ -357,9 +379,14 @@ export type ProjectItem = {
   clientId: string;
   budgetId?: string | null;
   description?: string | null;
+  localidad?: string | null;
+  contacto?: string | null;
+  direccion?: string | null;
   status: ProjectStatus;
   deliveryDate?: string | null;
   isActive: boolean;
+  createdBy?: string;
+  updatedBy?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -394,6 +421,7 @@ export type MaterialItem = {
   color: string | null;
   note: string | null;
   unit: string;
+  unitPrice: number;
   currentStock: number;
   minStock: number;
   isLowStock: boolean;
@@ -409,6 +437,7 @@ export type MaterialCreateInput = {
   color?: string;
   note?: string;
   unit?: string;
+  unitPrice?: number;
   minStock: number;
 };
 
@@ -421,6 +450,7 @@ export type MaterialUpdateInput = {
   color?: string;
   note?: string;
   unit?: string;
+  unitPrice?: number;
   minStock?: number;
   isActive?: boolean;
 };
@@ -586,10 +616,26 @@ export async function createBudgetApi(input: {
   prospectEmail?: string;
   prospectPhone?: string;
   prospectNotes?: string;
+  prospectLocalidad?: string;
+  prospectContacto?: string;
+  prospectDireccion?: string;
   title: string;
   description?: string;
   currency?: string;
   items: BudgetItemInput[];
+  materials?: Array<{
+    materialId: string;
+    quantity: number;
+  }>;
+  laborHours?: number;
+  laborCost?: number;
+  hourlyRate?: number;
+  sellerCommission?: number;
+  employeeBonus?: number;
+  shippingCost?: number;
+  packagingCost?: number;
+  marginType?: "COMUN_40" | "COCINA_55";
+  enableCommercialPricing?: boolean;
   status?: BudgetStatus;
 }): Promise<BudgetRecord> {
   const response = await http.post<ApiEnvelope<{ budget: BudgetRecord }>>(
@@ -602,10 +648,31 @@ export async function createBudgetApi(input: {
 export async function reviseBudgetApi(
   id: string,
   input: {
+    prospectName?: string;
+    prospectContactName?: string;
+    prospectEmail?: string;
+    prospectPhone?: string;
+    prospectNotes?: string;
+    prospectLocalidad?: string;
+    prospectContacto?: string;
+    prospectDireccion?: string;
     title?: string;
     description?: string;
     currency?: string;
     items?: BudgetItemInput[];
+    materials?: Array<{
+      materialId: string;
+      quantity: number;
+    }>;
+    laborHours?: number;
+    laborCost?: number;
+    hourlyRate?: number;
+    sellerCommission?: number;
+    employeeBonus?: number;
+    shippingCost?: number;
+    packagingCost?: number;
+    marginType?: "COMUN_40" | "COCINA_55";
+    enableCommercialPricing?: boolean;
     status?: BudgetStatus;
   },
 ): Promise<BudgetRecord> {
@@ -720,6 +787,12 @@ export type AcceptBudgetResult = {
   projectId: string;
   collectionId: string;
   createdClient: boolean;
+  stockAlerts?: Array<{
+    materialId: string;
+    requiredQuantity: number;
+    reservedQuantity: number;
+    missingQuantity: number;
+  }>;
 };
 
 export type BudgetPricingAuditSource = {
@@ -1437,6 +1510,20 @@ export async function getProjectByIdApi(id: string): Promise<ProjectItem> {
   return response.data.data.project;
 }
 
+export async function downloadProjectPdfApi(id: string): Promise<Blob> {
+  const response = await http.get(`/projects/${id}/pdf`, {
+    responseType: "blob",
+  });
+  return response.data as Blob;
+}
+
+export async function downloadNonFinalizedProjectsPdfApi(): Promise<Blob> {
+  const response = await http.get(`/projects/pdf/non-finalized`, {
+    responseType: "blob",
+  });
+  return response.data as Blob;
+}
+
 export async function updateProjectStatusApi(
   id: string,
   status: ProjectStatus,
@@ -1467,6 +1554,8 @@ export async function getMaterialsApi(params: {
   page: number;
   limit: number;
   category?: MaterialCategory;
+  search?: string;
+  activeOnly?: boolean;
 }): Promise<PaginatedResult<MaterialItem>> {
   const response = await http.get<ApiEnvelope<PaginatedResult<MaterialItem>>>(
     "/stock/materials",
@@ -1475,6 +1564,10 @@ export async function getMaterialsApi(params: {
         page: String(params.page),
         limit: String(params.limit),
         ...(params.category ? { category: params.category } : {}),
+        ...(params.search ? { search: params.search } : {}),
+        ...(params.activeOnly !== undefined
+          ? { activeOnly: String(params.activeOnly) }
+          : {}),
       },
     },
   );

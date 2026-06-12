@@ -2,6 +2,7 @@ import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../auth/useAuth";
+import { FormPopup } from "../components/FormPopup";
 import { Pagination } from "../components/Pagination";
 import {
   createCollectionApi,
@@ -52,6 +53,8 @@ export function CollectionsPage() {
     overdue: number;
     dueSoon: number;
   } | null>(null);
+  const [isFormPopupOpen, setIsFormPopupOpen] = useState(false);
+  const [isFormPopupMinimized, setIsFormPopupMinimized] = useState(false);
 
   const [clientId, setClientId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -60,6 +63,15 @@ export function CollectionsPage() {
   const [currency, setCurrency] = useState("ARS");
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
+
+  const hasUnsavedChanges =
+    clientId.trim().length > 0 ||
+    projectId.trim().length > 0 ||
+    totalAmount > 0 ||
+    laborAmountPending > 0 ||
+    currency.trim() !== "ARS" ||
+    dueDate.trim().length > 0 ||
+    notes.trim().length > 0;
 
   const page = Number(searchParams.get("page") ?? "1");
   const status = (searchParams.get("status") ?? "") as CollectionStatus | "";
@@ -185,6 +197,50 @@ export function CollectionsPage() {
     setSearchParams(params);
   };
 
+  const resetForm = () => {
+    setClientId("");
+    setProjectId("");
+    setTotalAmount(0);
+    setLaborAmountPending(0);
+    setCurrency("ARS");
+    setDueDate("");
+    setNotes("");
+    setFormError(null);
+  };
+
+  const openCreatePopup = () => {
+    resetForm();
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const handleMinimizeFormPopup = () => {
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(true);
+  };
+
+  const handleRestoreFormPopup = () => {
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const closeAndResetFormPopup = () => {
+    resetForm();
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(false);
+  };
+
+  const handleRequestCloseFormPopup = () => {
+    if (
+      hasUnsavedChanges &&
+      !window.confirm("Hay cambios sin guardar. ¿Deseas cerrar y descartarlos?")
+    ) {
+      return;
+    }
+
+    closeAndResetFormPopup();
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError(null);
@@ -210,13 +266,7 @@ export function CollectionsPage() {
         notes: notes.trim() || undefined,
       });
 
-      setClientId("");
-      setProjectId("");
-      setTotalAmount(0);
-      setLaborAmountPending(0);
-      setCurrency("ARS");
-      setDueDate("");
-      setNotes("");
+      closeAndResetFormPopup();
       await load();
     } catch {
       setFormError("No se pudo crear la cobranza");
@@ -289,6 +339,22 @@ export function CollectionsPage() {
         </div>
         {canWrite && (
           <div className="view-controls">
+            <button
+              className="btn btn-secondary"
+              type="button"
+              onClick={openCreatePopup}
+            >
+              Nueva cobranza
+            </button>
+            {isFormPopupMinimized && (
+              <button
+                className="btn btn-tertiary"
+                type="button"
+                onClick={handleRestoreFormPopup}
+              >
+                Restaurar formulario
+              </button>
+            )}
             <button
               className="btn btn-primary"
               type="button"
@@ -512,121 +578,112 @@ export function CollectionsPage() {
           />
         </article>
 
-        {canWrite && (
-          <article className="panel budget-form-panel">
-            <div className="clients-form-header">
-              <div>
-                <h3>Nueva cobranza</h3>
-                <p>Alta manual de cuenta por cobrar.</p>
-              </div>
-            </div>
+      </div>
 
-            <form
-              className="budget-form"
-              onSubmit={(event) => void handleSubmit(event)}
-            >
+      {canWrite && (
+        <FormPopup
+          isOpen={isFormPopupOpen}
+          title="Nueva cobranza"
+          subtitle="Alta manual de cuenta por cobrar."
+          onMinimize={handleMinimizeFormPopup}
+          onRequestClose={handleRequestCloseFormPopup}
+        >
+          <form
+            className="budget-form"
+            onSubmit={(event) => void handleSubmit(event)}
+          >
+            <label>
+              <span>ID cliente *</span>
+              <input
+                type="text"
+                value={clientId}
+                onChange={(event) => setClientId(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              <span>ID proyecto</span>
+              <input
+                type="text"
+                value={projectId}
+                onChange={(event) => setProjectId(event.target.value)}
+              />
+            </label>
+            <div className="budget-form__row">
               <label>
-                <span>ID cliente *</span>
+                <span>Total *</span>
                 <input
-                  type="text"
-                  value={clientId}
-                  onChange={(event) => setClientId(event.target.value)}
+                  type="number"
+                  min={0.01}
+                  step="0.01"
+                  value={totalAmount}
+                  onChange={(event) =>
+                    setTotalAmount(Number(event.target.value))
+                  }
                   required
                 />
               </label>
               <label>
-                <span>ID proyecto</span>
+                <span>Mano de obra pendiente</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={laborAmountPending}
+                  onChange={(event) =>
+                    setLaborAmountPending(Number(event.target.value))
+                  }
+                />
+              </label>
+            </div>
+            <div className="budget-form__row">
+              <label>
+                <span>Moneda</span>
                 <input
                   type="text"
-                  value={projectId}
-                  onChange={(event) => setProjectId(event.target.value)}
+                  value={currency}
+                  onChange={(event) => setCurrency(event.target.value)}
                 />
               </label>
-              <div className="budget-form__row">
-                <label>
-                  <span>Total *</span>
-                  <input
-                    type="number"
-                    min={0.01}
-                    step="0.01"
-                    value={totalAmount}
-                    onChange={(event) =>
-                      setTotalAmount(Number(event.target.value))
-                    }
-                    required
-                  />
-                </label>
-                <label>
-                  <span>Mano de obra pendiente</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={laborAmountPending}
-                    onChange={(event) =>
-                      setLaborAmountPending(Number(event.target.value))
-                    }
-                  />
-                </label>
-              </div>
-              <div className="budget-form__row">
-                <label>
-                  <span>Moneda</span>
-                  <input
-                    type="text"
-                    value={currency}
-                    onChange={(event) => setCurrency(event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Fecha de vencimiento</span>
-                  <input
-                    type="datetime-local"
-                    value={dueDate}
-                    onChange={(event) => setDueDate(event.target.value)}
-                  />
-                </label>
-              </div>
               <label>
-                <span>Notas</span>
-                <textarea
-                  rows={3}
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
+                <span>Fecha de vencimiento</span>
+                <input
+                  type="datetime-local"
+                  value={dueDate}
+                  onChange={(event) => setDueDate(event.target.value)}
                 />
               </label>
+            </div>
+            <label>
+              <span>Notas</span>
+              <textarea
+                rows={3}
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+              />
+            </label>
 
-              {formError && <p className="form-error">{formError}</p>}
+            {formError && <p className="form-error">{formError}</p>}
 
-              <div className="clients-form-actions">
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={isSaving}
-                >
-                  {isSaving ? "Guardando..." : "Crear cobranza"}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setClientId("");
-                    setProjectId("");
-                    setTotalAmount(0);
-                    setLaborAmountPending(0);
-                    setCurrency("ARS");
-                    setDueDate("");
-                    setNotes("");
-                    setFormError(null);
-                  }}
-                >
-                  Reiniciar
-                </button>
-              </div>
-            </form>
-          </article>
-        )}
-      </div>
+            <div className="clients-form-actions">
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isSaving}
+              >
+                {isSaving ? "Guardando..." : "Crear cobranza"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={resetForm}
+              >
+                Reiniciar
+              </button>
+            </div>
+          </form>
+        </FormPopup>
+      )}
     </section>
   );
 }

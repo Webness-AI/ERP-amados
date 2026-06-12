@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
+import { FormPopup } from "../components/FormPopup";
 import { Pagination } from "../components/Pagination";
 
 import {
@@ -14,10 +15,7 @@ import {
   type MaterialItem,
   type SupplierItem,
 } from "../services/erp-api";
-
-function formatMoney(value: number): string {
-  return `$ ${value.toLocaleString("es-AR")}`;
-}
+import { formatMoney } from "../utils/formatters";
 
 const PAGE_SIZE = 10;
 
@@ -39,6 +37,7 @@ type MaterialFormState = {
   unit: string;
   color: string;
   note: string;
+  unitPrice: string;
   minStock: string;
 };
 
@@ -51,6 +50,7 @@ const emptyFormState: MaterialFormState = {
   unit: "u",
   color: "",
   note: "",
+  unitPrice: "0",
   minStock: "0",
 };
 
@@ -70,6 +70,10 @@ export function StockPage() {
   const [suppliersError, setSuppliersError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [formState, setFormState] = useState<MaterialFormState>(emptyFormState);
+  const [initialFormState, setInitialFormState] =
+    useState<MaterialFormState>(emptyFormState);
+  const [isFormPopupOpen, setIsFormPopupOpen] = useState(false);
+  const [isFormPopupMinimized, setIsFormPopupMinimized] = useState(false);
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(
     null,
   );
@@ -195,6 +199,49 @@ export function StockPage() {
     }));
   };
 
+  const hasUnsavedChanges =
+    JSON.stringify(formState) !== JSON.stringify(initialFormState);
+
+  const resetForm = () => {
+    setFormState(emptyFormState);
+    setInitialFormState(emptyFormState);
+    setEditingMaterialId(null);
+    setFormError(null);
+  };
+
+  const openCreatePopup = () => {
+    resetForm();
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const handleMinimizeFormPopup = () => {
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(true);
+  };
+
+  const handleRestoreFormPopup = () => {
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const closeAndResetFormPopup = () => {
+    resetForm();
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(false);
+  };
+
+  const handleRequestCloseFormPopup = () => {
+    if (
+      hasUnsavedChanges &&
+      !window.confirm("Hay cambios sin guardar. ¿Deseas cerrar y descartarlos?")
+    ) {
+      return;
+    }
+
+    closeAndResetFormPopup();
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError(null);
@@ -206,6 +253,7 @@ export function StockPage() {
     const trimmedUnit = formState.unit.trim();
     const trimmedColor = formState.color.trim();
     const trimmedNote = formState.note.trim();
+    const unitPrice = Number(formState.unitPrice);
     const minStock = Number(formState.minStock);
 
     if (!trimmedSku) {
@@ -215,6 +263,11 @@ export function StockPage() {
 
     if (!trimmedSupplierId) {
       setFormError("El proveedor es obligatorio");
+      return;
+    }
+
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      setFormError("El precio del material debe ser un número válido");
       return;
     }
 
@@ -235,6 +288,7 @@ export function StockPage() {
         ...(trimmedUnit ? { unit: trimmedUnit } : {}),
         ...(trimmedColor ? { color: trimmedColor } : {}),
         ...(trimmedNote ? { note: trimmedNote } : {}),
+        unitPrice,
         minStock,
       };
 
@@ -244,8 +298,7 @@ export function StockPage() {
         await createMaterialApi(payload);
       }
 
-      setFormState(emptyFormState);
-      setEditingMaterialId(null);
+      closeAndResetFormPopup();
       await loadStock();
     } catch {
       setFormError(
@@ -261,7 +314,7 @@ export function StockPage() {
   const handleStartEdit = (row: MaterialItem) => {
     setFormError(null);
     setEditingMaterialId(row.id);
-    setFormState({
+    const nextFormState = {
       sku: row.sku ?? "",
       name: row.name,
       supplierId: row.supplierId ?? "",
@@ -270,14 +323,17 @@ export function StockPage() {
       unit: row.unit ?? "u",
       color: row.color ?? "",
       note: row.note ?? "",
+      unitPrice: String(row.unitPrice ?? 0),
       minStock: String(row.minStock),
-    });
+    };
+    setFormState(nextFormState);
+    setInitialFormState(nextFormState);
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
   };
 
   const handleCancelEdit = () => {
-    setEditingMaterialId(null);
-    setFormError(null);
-    setFormState(emptyFormState);
+    closeAndResetFormPopup();
   };
 
   const lowStockVisible = rows.filter((row) => row.isLowStock).length;
@@ -292,6 +348,22 @@ export function StockPage() {
           <p>Gestión de materiales para producción, faltantes y compras.</p>
         </div>
         <div className="stock-actions">
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={openCreatePopup}
+          >
+            Nuevo material
+          </button>
+          {isFormPopupMinimized && (
+            <button
+              className="btn btn-tertiary"
+              type="button"
+              onClick={handleRestoreFormPopup}
+            >
+              Restaurar formulario
+            </button>
+          )}
           <button
             className="btn btn-secondary"
             type="button"
@@ -359,28 +431,17 @@ export function StockPage() {
         ))}
       </div>
 
-      <article className="panel budget-form-panel">
-        <div className="clients-form-header">
-          <div>
-            <h3>{editingMaterialId ? "Editar material" : "Alta de material"}</h3>
-            <p>
-              {editingMaterialId
-                ? "Actualizá los datos del material seleccionado."
-                : "Creá nuevos materiales con proveedor, medida y metadatos."}
-            </p>
-          </div>
-          {editingMaterialId && (
-            <button
-              className="btn btn-secondary"
-              type="button"
-              onClick={handleCancelEdit}
-              disabled={isSaving}
-            >
-              Cancelar edición
-            </button>
-          )}
-        </div>
-
+      <FormPopup
+        isOpen={isFormPopupOpen}
+        title={editingMaterialId ? "Editar material" : "Alta de material"}
+        subtitle={
+          editingMaterialId
+            ? "Actualizá los datos del material seleccionado."
+            : "Creá nuevos materiales con proveedor, medida y metadatos."
+        }
+        onMinimize={handleMinimizeFormPopup}
+        onRequestClose={handleRequestCloseFormPopup}
+      >
         <form className="budget-form" onSubmit={handleSubmit}>
           <div className="budget-form__row">
             <label>
@@ -478,6 +539,17 @@ export function StockPage() {
             </label>
 
             <label>
+              <span>Precio unitario</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={formState.unitPrice}
+                onChange={(event) => handleFormChange("unitPrice", event.target.value)}
+              />
+            </label>
+
+            <label>
               <span>Stock mínimo</span>
               <input
                 type="number"
@@ -520,7 +592,7 @@ export function StockPage() {
             </button>
           </div>
         </form>
-      </article>
+      </FormPopup>
 
       <article className="panel">
         <div className="table-wrapper">
@@ -533,6 +605,7 @@ export function StockPage() {
                 <th className="td-numeric">Reservado</th>
                 <th className="td-numeric">Disponible</th>
                 <th>Unidad</th>
+                <th className="td-numeric">Precio unitario</th>
                 <th>Estado</th>
                 <th>Acciones</th>
               </tr>
@@ -540,21 +613,21 @@ export function StockPage() {
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={8} className="text-center">
+                  <td colSpan={9} className="text-center">
                     Cargando inventario...
                   </td>
                 </tr>
               )}
               {!isLoading && error && (
                 <tr>
-                  <td colSpan={8} className="text-negative text-center">
+                  <td colSpan={9} className="text-negative text-center">
                     {error}
                   </td>
                 </tr>
               )}
               {!isLoading && !error && rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="text-center">
+                  <td colSpan={9} className="text-center">
                     No hay materiales para mostrar
                   </td>
                 </tr>
@@ -598,6 +671,7 @@ export function StockPage() {
                       <td className="td-numeric">{reserved}</td>
                       <td className="td-numeric">{available}</td>
                       <td>{row.unit}</td>
+                      <td className="td-numeric">{formatMoney(row.unitPrice ?? 0)}</td>
                       <td>
                         {row.isLowStock ? (
                           <span className="chip chip-produccion">CRITICO</span>

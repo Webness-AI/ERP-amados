@@ -1,7 +1,8 @@
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../auth/useAuth";
+import { FormPopup } from "../components/FormPopup";
 import { Pagination } from "../components/Pagination";
 import {
   createFixedExpenseApi,
@@ -72,12 +73,14 @@ export function FixedExpensesPage() {
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [formState, setFormState] =
     useState<FixedExpenseFormState>(emptyFormState);
+  const [initialFormState, setInitialFormState] =
+    useState<FixedExpenseFormState>(emptyFormState);
+  const [isFormPopupOpen, setIsFormPopupOpen] = useState(false);
+  const [isFormPopupMinimized, setIsFormPopupMinimized] = useState(false);
   const [alerts, setAlerts] = useState<{
     overdue: number;
     dueSoon: number;
   } | null>(null);
-  const formPanelRef = useRef<HTMLElement | null>(null);
-  const nameInputRef = useRef<HTMLInputElement | null>(null);
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
@@ -211,16 +214,45 @@ export function FixedExpensesPage() {
   const resetForm = () => {
     setEditingExpenseId(null);
     setFormState(emptyFormState);
+    setInitialFormState(emptyFormState);
     setFormError(null);
+  };
+
+  const hasUnsavedChanges =
+    JSON.stringify(formState) !== JSON.stringify(initialFormState);
+
+  const handleMinimizeFormPopup = () => {
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(true);
+  };
+
+  const handleRestoreFormPopup = () => {
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const closeAndResetPopup = () => {
+    resetForm();
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(false);
+  };
+
+  const handleRequestCloseFormPopup = () => {
+    if (
+      hasUnsavedChanges &&
+      !window.confirm("Hay cambios sin guardar. ¿Deseas cerrar y descartarlos?")
+    ) {
+      return;
+    }
+
+    closeAndResetPopup();
   };
 
   const openNewExpenseForm = () => {
     resetForm();
     setSelectedExpenseId(null);
-    formPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    window.requestAnimationFrame(() => {
-      nameInputRef.current?.focus();
-    });
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
   };
 
   const startEdit = (expense: FixedExpenseRecord) => {
@@ -234,8 +266,17 @@ export function FixedExpensesPage() {
       nextDueDate: toDatetimeLocal(expense.nextDueDate),
       notes: expense.notes ?? "",
     });
+    setInitialFormState({
+      name: expense.name,
+      amount: expense.amount,
+      currency: expense.currency,
+      frequency: expense.frequency,
+      nextDueDate: toDatetimeLocal(expense.nextDueDate),
+      notes: expense.notes ?? "",
+    });
     setFormError(null);
-    formPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -292,7 +333,7 @@ export function FixedExpensesPage() {
       }
 
       await refreshList();
-      resetForm();
+      closeAndResetPopup();
     } catch {
       setFormError("No se pudo guardar el gasto fijo");
     } finally {
@@ -369,6 +410,15 @@ export function FixedExpensesPage() {
           >
             Nuevo gasto
           </button>
+          {isFormPopupMinimized && canWrite && (
+            <button
+              type="button"
+              className="btn btn-tertiary"
+              onClick={handleRestoreFormPopup}
+            >
+              Restaurar formulario
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-primary"
@@ -620,151 +670,144 @@ export function FixedExpensesPage() {
             )}
           </article>
 
-          <article className="panel budget-form-panel" ref={formPanelRef}>
-            <div className="clients-form-header">
-              <div>
-                <h3>{editingExpenseId ? "Editar gasto" : "Nuevo gasto"}</h3>
-                <p>
-                  {editingExpenseId
-                    ? "Actualiza datos del gasto recurrente."
-                    : "Registra un nuevo gasto fijo para control financiero."}
-                </p>
-              </div>
-              {editingExpenseId && (
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={resetForm}
-                >
-                  Limpiar
-                </button>
-              )}
-            </div>
-
-            <form
-              className="budget-form"
-              onSubmit={(event) => void handleSubmit(event)}
-            >
-              <label>
-                <span>Nombre *</span>
-                <input
-                  type="text"
-                  ref={nameInputRef}
-                  value={formState.name}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                  required
-                />
-              </label>
-              <div className="budget-form__row">
-                <label>
-                  <span>Monto *</span>
-                  <input
-                    type="number"
-                    min={0.01}
-                    step="0.01"
-                    value={formState.amount}
-                    onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        amount: Number(event.target.value),
-                      }))
-                    }
-                    required
-                  />
-                </label>
-                <label>
-                  <span>Moneda</span>
-                  <input
-                    type="text"
-                    value={formState.currency}
-                    onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        currency: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-              </div>
-              <div className="budget-form__row">
-                <label>
-                  <span>Frecuencia</span>
-                  <select
-                    value={formState.frequency}
-                    onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        frequency: event.target.value as FixedExpenseFrequency,
-                      }))
-                    }
-                  >
-                    {frequencyOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>Próximo vencimiento *</span>
-                  <input
-                    type="datetime-local"
-                    value={formState.nextDueDate}
-                    onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        nextDueDate: event.target.value,
-                      }))
-                    }
-                    required
-                  />
-                </label>
-              </div>
-              <label>
-                <span>Notas</span>
-                <textarea
-                  rows={3}
-                  value={formState.notes}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      notes: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-
-              {formError && <p className="form-error">{formError}</p>}
-
-              <div className="clients-form-actions">
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={isSaving}
-                >
-                  {isSaving
-                    ? "Guardando..."
-                    : editingExpenseId
-                      ? "Guardar cambios"
-                      : "Crear gasto"}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={resetForm}
-                >
-                  Reiniciar
-                </button>
-              </div>
-            </form>
-          </article>
         </div>
       </div>
+
+      <FormPopup
+        isOpen={isFormPopupOpen}
+        title={editingExpenseId ? "Editar gasto" : "Nuevo gasto"}
+        subtitle={
+          editingExpenseId
+            ? "Actualiza datos del gasto recurrente."
+            : "Registra un nuevo gasto fijo para control financiero."
+        }
+        onMinimize={handleMinimizeFormPopup}
+        onRequestClose={handleRequestCloseFormPopup}
+      >
+        <form
+          className="budget-form"
+          onSubmit={(event) => void handleSubmit(event)}
+        >
+          <label>
+            <span>Nombre *</span>
+            <input
+              type="text"
+              value={formState.name}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  name: event.target.value,
+                }))
+              }
+              required
+            />
+          </label>
+          <div className="budget-form__row">
+            <label>
+              <span>Monto *</span>
+              <input
+                type="number"
+                min={0.01}
+                step="0.01"
+                value={formState.amount}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    amount: Number(event.target.value),
+                  }))
+                }
+                required
+              />
+            </label>
+            <label>
+              <span>Moneda</span>
+              <input
+                type="text"
+                value={formState.currency}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    currency: event.target.value,
+                  }))
+                }
+              />
+            </label>
+          </div>
+          <div className="budget-form__row">
+            <label>
+              <span>Frecuencia</span>
+              <select
+                value={formState.frequency}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    frequency: event.target.value as FixedExpenseFrequency,
+                  }))
+                }
+              >
+                {frequencyOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Próximo vencimiento *</span>
+              <input
+                type="datetime-local"
+                value={formState.nextDueDate}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    nextDueDate: event.target.value,
+                  }))
+                }
+                required
+              />
+            </label>
+          </div>
+          <label>
+            <span>Notas</span>
+            <textarea
+              rows={3}
+              value={formState.notes}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  notes: event.target.value,
+                }))
+              }
+            />
+          </label>
+
+          {formError && <p className="form-error">{formError}</p>}
+
+          <div className="clients-form-actions">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={isSaving}
+            >
+              {isSaving
+                ? "Guardando..."
+                : editingExpenseId
+                  ? "Guardar cambios"
+                  : "Crear gasto"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setFormState(editingExpenseId ? initialFormState : emptyFormState);
+                setFormError(null);
+              }}
+            >
+              Reiniciar
+            </button>
+          </div>
+        </form>
+      </FormPopup>
     </section>
   );
 }

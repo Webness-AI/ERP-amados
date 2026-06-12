@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { FormPopup } from "../components/FormPopup";
 import { Pagination } from "../components/Pagination";
 
 import {
@@ -11,6 +12,7 @@ import {
   type ClientInput,
   type ClientItem,
 } from "../services/erp-api";
+import { formatDate } from "../utils/formatters";
 
 const PAGE_SIZE = 10;
 
@@ -34,15 +36,6 @@ function buildFormFromClient(client?: ClientItem | null): ClientFormState {
   };
 }
 
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Sin fecha";
-  }
-
-  return date.toLocaleDateString("es-AR");
-}
-
 export function ClientsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState<ClientItem[]>([]);
@@ -53,6 +46,10 @@ export function ClientsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [formState, setFormState] = useState<ClientFormState>(emptyFormState);
+  const [initialFormState, setInitialFormState] =
+    useState<ClientFormState>(emptyFormState);
+  const [isFormPopupOpen, setIsFormPopupOpen] = useState(false);
+  const [isFormPopupMinimized, setIsFormPopupMinimized] = useState(false);
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
@@ -131,13 +128,53 @@ export function ClientsPage() {
   const startCreate = () => {
     setEditingClientId(null);
     setFormState(emptyFormState);
+    setInitialFormState(emptyFormState);
     setFormError(null);
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
   };
 
   const startEdit = (client: ClientItem) => {
+    const baseFormState = buildFormFromClient(client);
     setEditingClientId(client._id);
-    setFormState(buildFormFromClient(client));
+    setFormState(baseFormState);
+    setInitialFormState(baseFormState);
     setFormError(null);
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const hasUnsavedChanges =
+    JSON.stringify(formState) !== JSON.stringify(initialFormState);
+
+  const handleMinimizeFormPopup = () => {
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(true);
+  };
+
+  const handleRestoreFormPopup = () => {
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const closeAndResetForm = () => {
+    setEditingClientId(null);
+    setFormState(emptyFormState);
+    setInitialFormState(emptyFormState);
+    setFormError(null);
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(false);
+  };
+
+  const handleRequestCloseFormPopup = () => {
+    if (
+      hasUnsavedChanges &&
+      !window.confirm("Hay cambios sin guardar. ¿Deseas cerrar y descartarlos?")
+    ) {
+      return;
+    }
+
+    closeAndResetForm();
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -162,8 +199,7 @@ export function ClientsPage() {
         await createClientApi(payload);
       }
 
-      setEditingClientId(null);
-      setFormState(emptyFormState);
+      closeAndResetForm();
 
       const data = await getClientsApi({
         page: safePage,
@@ -199,7 +235,7 @@ export function ClientsPage() {
       setTotalPages(Math.max(data.pagination.totalPages, 1));
 
       if (editingClientId === client._id) {
-        startCreate();
+        closeAndResetForm();
       }
     } catch {
       setFormError("No se pudo eliminar el cliente");
@@ -235,6 +271,15 @@ export function ClientsPage() {
           >
             Nuevo cliente
           </button>
+          {isFormPopupMinimized && (
+            <button
+              className="btn btn-tertiary"
+              type="button"
+              onClick={handleRestoreFormPopup}
+            >
+              Restaurar formulario
+            </button>
+          )}
           <button className="btn btn-primary" type="button">
             Importar clientes
           </button>
@@ -388,123 +433,118 @@ export function ClientsPage() {
           />
         </article>
 
-        <article className="panel clients-form-panel">
-          <div className="clients-form-header">
-            <div>
-              <h3>{editingClientId ? "Editar cliente" : "Nuevo cliente"}</h3>
-              <p>
-                {editingClientId
-                  ? "Ajusta datos y guarda cambios."
-                  : "Carga un cliente nuevo para operar el flujo comercial."}
-              </p>
-            </div>
-            {editingClientId && (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={startCreate}
-              >
-                Limpiar
-              </button>
-            )}
-          </div>
-
-          <form
-            className="clients-form"
-            onSubmit={(event) => void handleSubmit(event)}
-          >
-            <label>
-              <span>Nombre *</span>
-              <input
-                type="text"
-                value={formState.name}
-                onChange={(event) =>
-                  setFormState((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                required
-              />
-            </label>
-            <label>
-              <span>Contacto</span>
-              <input
-                type="text"
-                value={formState.contactName ?? ""}
-                onChange={(event) =>
-                  setFormState((current) => ({
-                    ...current,
-                    contactName: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label>
-              <span>Email</span>
-              <input
-                type="email"
-                value={formState.email ?? ""}
-                onChange={(event) =>
-                  setFormState((current) => ({
-                    ...current,
-                    email: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label>
-              <span>Teléfono</span>
-              <input
-                type="text"
-                value={formState.phone ?? ""}
-                onChange={(event) =>
-                  setFormState((current) => ({
-                    ...current,
-                    phone: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label>
-              <span>Notas</span>
-              <textarea
-                rows={5}
-                value={formState.notes ?? ""}
-                onChange={(event) =>
-                  setFormState((current) => ({
-                    ...current,
-                    notes: event.target.value,
-                  }))
-                }
-              />
-            </label>
-
-            {formError && <p className="form-error">{formError}</p>}
-
-            <div className="clients-form-actions">
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={isSaving}
-              >
-                {isSaving
-                  ? "Guardando..."
-                  : editingClientId
-                    ? "Guardar cambios"
-                    : "Crear cliente"}
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={startCreate}
-              >
-                Reiniciar
-              </button>
-            </div>
-          </form>
-        </article>
       </div>
+
+      <FormPopup
+        isOpen={isFormPopupOpen}
+        title={editingClientId ? "Editar cliente" : "Nuevo cliente"}
+        subtitle={
+          editingClientId
+            ? "Ajusta datos y guarda cambios."
+            : "Carga un cliente nuevo para operar el flujo comercial."
+        }
+        onMinimize={handleMinimizeFormPopup}
+        onRequestClose={handleRequestCloseFormPopup}
+      >
+        <form
+          className="clients-form"
+          onSubmit={(event) => void handleSubmit(event)}
+        >
+          <label>
+            <span>Nombre *</span>
+            <input
+              type="text"
+              value={formState.name}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  name: event.target.value,
+                }))
+              }
+              required
+            />
+          </label>
+          <label>
+            <span>Contacto</span>
+            <input
+              type="text"
+              value={formState.contactName ?? ""}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  contactName: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Email</span>
+            <input
+              type="email"
+              value={formState.email ?? ""}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  email: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Teléfono</span>
+            <input
+              type="text"
+              value={formState.phone ?? ""}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  phone: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Notas</span>
+            <textarea
+              rows={5}
+              value={formState.notes ?? ""}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  notes: event.target.value,
+                }))
+              }
+            />
+          </label>
+
+          {formError && <p className="form-error">{formError}</p>}
+
+          <div className="clients-form-actions">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={isSaving}
+            >
+              {isSaving
+                ? "Guardando..."
+                : editingClientId
+                  ? "Guardar cambios"
+                  : "Crear cliente"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                const base = editingClientId ? initialFormState : emptyFormState;
+                setFormState(base);
+                setFormError(null);
+              }}
+            >
+              Reiniciar
+            </button>
+          </div>
+        </form>
+      </FormPopup>
     </section>
   );
 }
