@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { Pagination } from "../components/Pagination";
 import { FormPopup } from "../components/FormPopup";
+import { MaterialListPicker } from "../components/MaterialListPicker";
 
 import {
   acceptBudgetApi,
@@ -14,7 +15,6 @@ import {
   getBudgetByIdApi,
   getBudgetPricingAuditTrailApi,
   getBudgetsApi,
-  getMaterialsApi,
   recalculateBudgetPricingApi,
   rejectBudgetApi,
   updateBudgetStatusApi,
@@ -400,10 +400,6 @@ export function BudgetsPage() {
   const budgetMenuRef = useRef<HTMLDivElement | null>(null);
   const acceptClientNameInputRef = useRef<HTMLInputElement | null>(null);
   const rejectReasonInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const [materialSearch, setMaterialSearch] = useState("");
-  const [materialCatalog, setMaterialCatalog] = useState<MaterialItem[]>([]);
-  const [isMaterialCatalogLoading, setIsMaterialCatalogLoading] = useState(false);
-  const [materialCatalogError, setMaterialCatalogError] = useState<string | null>(null);
   const [isHoursPopupOpen, setIsHoursPopupOpen] = useState(false);
   const [isHoursPopupMinimized, setIsHoursPopupMinimized] = useState(false);
   const [isBudgetFormOpen, setIsBudgetFormOpen] = useState(false);
@@ -596,48 +592,6 @@ export function BudgetsPage() {
   }, [rows, selectedBudgetId]);
 
   useEffect(() => {
-    let active = true;
-
-    const loadMaterials = async () => {
-      setIsMaterialCatalogLoading(true);
-      setMaterialCatalogError(null);
-      try {
-        const result = await getMaterialsApi({
-          page: 1,
-          limit: 50,
-          search: materialSearch.trim() || undefined,
-          activeOnly: true,
-        });
-
-        if (!active) {
-          return;
-        }
-
-        setMaterialCatalog(result.items);
-      } catch (error) {
-        if (!active) {
-          return;
-        }
-
-        setMaterialCatalogError(
-          getApiErrorInfo(error, "No se pudieron cargar los materiales").message,
-        );
-        setMaterialCatalog([]);
-      } finally {
-        if (active) {
-          setIsMaterialCatalogLoading(false);
-        }
-      }
-    };
-
-    void loadMaterials();
-
-    return () => {
-      active = false;
-    };
-  }, [materialSearch]);
-
-  useEffect(() => {
     if (!openBudgetMenuId) {
       return;
     }
@@ -784,7 +738,7 @@ export function BudgetsPage() {
     }));
   };
 
-  const appendMaterial = async (material: MaterialItem) => {
+  const appendMaterial = (material: MaterialItem) => {
     const existing = formState.materials.find(
       (entry) => entry.materialId === material.id,
     );
@@ -904,13 +858,10 @@ export function BudgetsPage() {
   };
 
   const startCreate = () => {
-    setEditingBudgetId(null);
-    setSelectedBudgetId(null);
     setOpenBudgetMenuId(null);
-    setFormState(emptyFormState);
     setFormError(null);
     setActionFeedback(null);
-    openBudgetForm();
+    navigate("/budgets/new");
   };
 
   const startEdit = (budget: BudgetRecord) => {
@@ -2155,127 +2106,15 @@ export function BudgetsPage() {
                   <h4>Materiales (Stock)</h4>
                 </div>
 
-                <label>
-                  <span>Buscar material</span>
-                  <input
-                    type="search"
-                    value={materialSearch}
-                    onChange={(event) => setMaterialSearch(event.target.value)}
-                    placeholder="Nombre, SKU o tipo"
-                  />
-                </label>
-
-                {isMaterialCatalogLoading && (
-                  <p className="text-muted">Cargando materiales...</p>
-                )}
-                {!isMaterialCatalogLoading && materialCatalogError && (
-                  <p className="text-negative">{materialCatalogError}</p>
-                )}
-
-                {!isMaterialCatalogLoading && !materialCatalogError && (
-                  <div className="budget-detail__items">
-                    {materialCatalog.length === 0 ? (
-                      <p className="text-muted">
-                        No hay materiales activos para el filtro actual.
-                      </p>
-                    ) : (
-                      materialCatalog.slice(0, 12).map((material) => {
-                        const materialAlreadySelected = formState.materials.some(
-                          (entry) => entry.materialId === material.id,
-                        );
-                        return (
-                          <div
-                            key={material.id}
-                            className="budget-detail__item"
-                          >
-                            <div>
-                              <strong>{material.name}</strong>
-                              <small>
-                                SKU {material.sku ?? "-"} · Stock{" "}
-                                {material.currentStock} {material.unit} · Precio{" "}
-                                {formatMoney(
-                                  material.unitPrice ?? 0,
-                                  formState.currency,
-                                )}
-                              </small>
-                            </div>
-                            <button
-                              type="button"
-                              className="btn btn-tertiary"
-                              onClick={() => void appendMaterial(material)}
-                            >
-                              {materialAlreadySelected ? "+1" : "Agregar"}
-                            </button>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                )}
-
-                {formState.materials.length > 0 &&
-                  formState.materials.map((material) => {
-                    const materialMeta = materialCatalog.find(
-                      (catalogItem) => catalogItem.id === material.materialId,
-                    );
-
-                    return (
-                      <div key={material.materialId} className="budget-item-row">
-                        <label>
-                          <span>Material</span>
-                          <input
-                            type="text"
-                            value={
-                              materialMeta?.name ??
-                              `Material ${material.materialId.slice(-8)}`
-                            }
-                            disabled
-                          />
-                        </label>
-                        <label>
-                          <span>Cantidad</span>
-                          <input
-                            type="number"
-                            min="1"
-                            step="1"
-                            value={material.quantity}
-                            onChange={(event) =>
-                              updateMaterial(
-                                material.materialId,
-                                "quantity",
-                                Number(event.target.value),
-                              )
-                            }
-                          />
-                        </label>
-                        <div className="budget-item-row__total">
-                          <span>Precio unitario</span>
-                          <strong>
-                            {formatMoney(material.unitPrice, formState.currency)}
-                          </strong>
-                        </div>
-                        <div className="budget-item-row__total">
-                          <span>Total</span>
-                          <strong>
-                            {formatMoney(
-                              calculateMaterialLineTotal(
-                                material.quantity,
-                                material.unitPrice,
-                              ),
-                              formState.currency,
-                            )}
-                          </strong>
-                        </div>
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => removeMaterial(material.materialId)}
-                        >
-                          Quitar
-                        </button>
-                      </div>
-                    );
-                  })}
+                <MaterialListPicker
+                  value={formState.materials}
+                  currency={formState.currency}
+                  onAddMaterial={appendMaterial}
+                  onQuantityChange={(materialId, quantity) =>
+                    updateMaterial(materialId, "quantity", quantity)
+                  }
+                  onRemoveMaterial={removeMaterial}
+                />
               </div>
 
               <div className="budget-form__row">
