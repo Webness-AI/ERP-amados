@@ -33,6 +33,9 @@ export async function createClient(
     email: normalizeOptionalString(input.email)?.toLowerCase() ?? null,
     phone: normalizeOptionalString(input.phone),
     notes: normalizeOptionalString(input.notes),
+    localidad: normalizeOptionalString(input.localidad),
+    contacto: normalizeOptionalString(input.contacto),
+    direccion: normalizeOptionalString(input.direccion),
     isActive: true,
     createdBy: actor.id,
     updatedBy: actor.id,
@@ -61,7 +64,14 @@ export async function listClients(query: ListClientsInput): Promise<{
 
   if (query.search && query.search.trim().length > 0) {
     const regex = new RegExp(query.search.trim(), "i");
-    filter.$or = [{ name: regex }, { email: regex }, { contactName: regex }];
+    filter.$or = [
+      { name: regex },
+      { email: regex },
+      { contactName: regex },
+      { localidad: regex },
+      { contacto: regex },
+      { direccion: regex },
+    ];
   }
 
   const [items, total] = await Promise.all([
@@ -122,6 +132,18 @@ export async function updateClient(
 
   if (input.notes !== undefined) {
     updatePayload.notes = normalizeOptionalString(input.notes);
+  }
+
+  if (input.localidad !== undefined) {
+    updatePayload.localidad = normalizeOptionalString(input.localidad);
+  }
+
+  if (input.contacto !== undefined) {
+    updatePayload.contacto = normalizeOptionalString(input.contacto);
+  }
+
+  if (input.direccion !== undefined) {
+    updatePayload.direccion = normalizeOptionalString(input.direccion);
   }
 
   const client = await ClientModel.findOneAndUpdate(

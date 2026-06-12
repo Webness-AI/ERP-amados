@@ -47,6 +47,7 @@ type PublicMaterial = {
   color: string | null;
   note: string | null;
   unit: string;
+  unitPrice: number;
   minStock: number;
   isActive: boolean;
   currentStock: number;
@@ -291,6 +292,7 @@ function toPublicMaterial(
     color?: string | null;
     note?: string | null;
     unit: string;
+    unitPrice?: number | null;
     minStock: number;
     isActive: boolean;
     createdAt: Date;
@@ -308,6 +310,7 @@ function toPublicMaterial(
     color: value.color ?? null,
     note: value.note ?? null,
     unit: value.unit,
+    unitPrice: value.unitPrice ?? 0,
     minStock: value.minStock,
     isActive: value.isActive,
     currentStock: stock,
@@ -633,6 +636,7 @@ export async function createMaterial(
     color: normalizeText(input.color),
     note: normalizeNote(input.note),
     unit: normalizeText(input.unit) ?? "u",
+    unitPrice: input.unitPrice ?? 0,
     minStock: input.minStock,
     isActive: true,
     createdBy: actor.id,
@@ -677,7 +681,7 @@ export async function listMaterials(query: ListMaterialsInput): Promise<{
       .skip(skip)
       .limit(limit)
       .select(
-        "name category sku supplierId type color note unit minStock isActive createdAt updatedAt",
+        "name category sku supplierId type color note unit unitPrice minStock isActive createdAt updatedAt",
       )
       .lean(),
     MaterialModel.countDocuments(filter),
@@ -709,7 +713,7 @@ export async function getMaterialById(id: string): Promise<PublicMaterial> {
     deletedAt: null,
   })
     .select(
-      "name category sku supplierId type color note unit minStock isActive createdAt updatedAt",
+      "name category sku supplierId type color note unit unitPrice minStock isActive createdAt updatedAt",
     )
     .lean();
 
@@ -774,6 +778,10 @@ export async function updateMaterial(
     updatePayload.unit = input.unit;
   }
 
+  if (input.unitPrice !== undefined) {
+    updatePayload.unitPrice = input.unitPrice;
+  }
+
   if (input.minStock !== undefined) {
     updatePayload.minStock = input.minStock;
   }
@@ -796,6 +804,7 @@ export async function updateMaterial(
         color: 1,
         note: 1,
         unit: 1,
+        unitPrice: 1,
         minStock: 1,
         isActive: 1,
         createdAt: 1,

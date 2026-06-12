@@ -108,7 +108,7 @@ const collectionSchema = new Schema<Collection>(
     totalAmount: {
       type: Number,
       required: true,
-      min: 0.0001,
+      min: 0,
     },
     paidAmount: {
       type: Number,

@@ -26,6 +26,9 @@ export type Project = AuditableFields & {
   budgetId?: Types.ObjectId | null;
   name: string;
   description?: string | null;
+  localidad?: string | null;
+  contacto?: string | null;
+  direccion?: string | null;
   status: ProjectStatus;
   deliveryDate?: Date | null;
   isActive: boolean;
@@ -57,6 +60,24 @@ const projectSchema = new Schema<Project>(
       trim: true,
       default: null,
       maxlength: 2000,
+    },
+    localidad: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 180,
+    },
+    contacto: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 140,
+    },
+    direccion: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 500,
     },
     status: {
       type: String,

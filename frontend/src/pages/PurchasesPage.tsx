@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { FormPopup } from "../components/FormPopup";
 import { Pagination } from "../components/Pagination";
 import {
   createPurchaseApi,
@@ -12,6 +13,10 @@ import {
   type PurchaseRecord,
   type PurchaseStatus,
 } from "../services/erp-api";
+import {
+  formatDate,
+  formatMoneyWithCurrency as formatMoney,
+} from "../utils/formatters";
 
 const PAGE_SIZE = 8;
 
@@ -48,23 +53,6 @@ const emptyFormState: PurchaseFormState = {
   items: [{ ...emptyItem }],
 };
 
-function formatMoney(value: number, currency = "ARS"): string {
-  return `${currency} ${value.toLocaleString("es-AR")}`;
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) {
-    return "Sin fecha";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Sin fecha";
-  }
-
-  return date.toLocaleDateString("es-AR");
-}
-
 function itemTotal(item: PurchaseItemInput): number {
   return Number((item.quantityOrdered * item.unitCost).toFixed(2));
 }
@@ -87,6 +75,10 @@ export function PurchasesPage() {
     null,
   );
   const [formState, setFormState] = useState<PurchaseFormState>(emptyFormState);
+  const [initialFormState, setInitialFormState] =
+    useState<PurchaseFormState>(emptyFormState);
+  const [isFormPopupOpen, setIsFormPopupOpen] = useState(false);
+  const [isFormPopupMinimized, setIsFormPopupMinimized] = useState(false);
   const [receiveQuantities, setReceiveQuantities] = useState<
     Record<string, number>
   >({});
@@ -228,7 +220,44 @@ export function PurchasesPage() {
 
   const clearForm = () => {
     setFormState(emptyFormState);
+    setInitialFormState(emptyFormState);
     setFormError(null);
+  };
+
+  const hasUnsavedChanges =
+    JSON.stringify(formState) !== JSON.stringify(initialFormState);
+
+  const openCreatePopup = () => {
+    clearForm();
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const handleMinimizeFormPopup = () => {
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(true);
+  };
+
+  const handleRestoreFormPopup = () => {
+    setIsFormPopupOpen(true);
+    setIsFormPopupMinimized(false);
+  };
+
+  const closeAndResetPopup = () => {
+    clearForm();
+    setIsFormPopupOpen(false);
+    setIsFormPopupMinimized(false);
+  };
+
+  const handleRequestCloseFormPopup = () => {
+    if (
+      hasUnsavedChanges &&
+      !window.confirm("Hay cambios sin guardar. ¿Deseas cerrar y descartarlos?")
+    ) {
+      return;
+    }
+
+    closeAndResetPopup();
   };
 
   const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
@@ -266,7 +295,7 @@ export function PurchasesPage() {
     try {
       await createPurchaseApi(payload);
       await refreshList();
-      clearForm();
+      closeAndResetPopup();
     } catch {
       setFormError("No se pudo crear la compra");
     } finally {
@@ -350,10 +379,19 @@ export function PurchasesPage() {
           <button
             className="btn btn-secondary"
             type="button"
-            onClick={clearForm}
+            onClick={openCreatePopup}
           >
             Nueva compra
           </button>
+          {isFormPopupMinimized && (
+            <button
+              className="btn btn-tertiary"
+              type="button"
+              onClick={handleRestoreFormPopup}
+            >
+              Restaurar formulario
+            </button>
+          )}
           <button className="btn btn-primary" type="button">
             Reporte de compras
           </button>
@@ -596,198 +634,199 @@ export function PurchasesPage() {
             )}
           </article>
 
-          <article className="panel budget-form-panel">
-            <div className="clients-form-header">
-              <div>
-                <h3>Nueva compra</h3>
-                <p>
-                  Crea una orden con proveedor, materiales y costos unitarios.
-                </p>
-              </div>
+        </div>
+      </div>
+
+      <FormPopup
+        isOpen={isFormPopupOpen}
+        title="Nueva compra"
+        subtitle="Crea una orden con proveedor, materiales y costos unitarios."
+        onMinimize={handleMinimizeFormPopup}
+        onRequestClose={handleRequestCloseFormPopup}
+      >
+        <form
+          className="budget-form"
+          onSubmit={(event) => void handleCreate(event)}
+        >
+          <label>
+            <span>ID proveedor *</span>
+            <input
+              type="text"
+              value={formState.supplierId}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  supplierId: event.target.value,
+                }))
+              }
+              required
+            />
+          </label>
+          <label>
+            <span>ID proyecto</span>
+            <input
+              type="text"
+              value={formState.projectId}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  projectId: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <div className="budget-form__row">
+            <label>
+              <span>Moneda</span>
+              <input
+                type="text"
+                value={formState.currency}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    currency: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>Estado inicial</span>
+              <select
+                value={formState.status}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    status: event.target.value as "DRAFT" | "ORDERED",
+                  }))
+                }
+              >
+                <option value="DRAFT">Borrador</option>
+                <option value="ORDERED">Ordenado</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            <span>Notas</span>
+            <textarea
+              rows={3}
+              value={formState.notes}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  notes: event.target.value,
+                }))
+              }
+            />
+          </label>
+
+          <div className="budget-items">
+            <div className="budget-items__header">
+              <h4>Items de compra</h4>
+              <button
+                type="button"
+                className="btn btn-tertiary"
+                onClick={appendItem}
+              >
+                + Agregar item
+              </button>
             </div>
 
-            <form
-              className="budget-form"
-              onSubmit={(event) => void handleCreate(event)}
-            >
-              <label>
-                <span>ID proveedor *</span>
-                <input
-                  type="text"
-                  value={formState.supplierId}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      supplierId: event.target.value,
-                    }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                <span>ID proyecto</span>
-                <input
-                  type="text"
-                  value={formState.projectId}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      projectId: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <div className="budget-form__row">
+            {formState.items.map((item, index) => (
+              <div
+                key={`${index}-${item.materialId}`}
+                className="budget-item-row"
+              >
                 <label>
-                  <span>Moneda</span>
+                  <span>Material ID</span>
                   <input
                     type="text"
-                    value={formState.currency}
+                    value={item.materialId}
                     onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        currency: event.target.value,
-                      }))
+                      updateItem(index, "materialId", event.target.value)
                     }
                   />
                 </label>
                 <label>
-                  <span>Estado inicial</span>
-                  <select
-                    value={formState.status}
+                  <span>Cantidad</span>
+                  <input
+                    type="number"
+                    min={0.0001}
+                    step="0.0001"
+                    value={item.quantityOrdered}
                     onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        status: event.target.value as "DRAFT" | "ORDERED",
-                      }))
+                      updateItem(
+                        index,
+                        "quantityOrdered",
+                        Number(event.target.value),
+                      )
                     }
-                  >
-                    <option value="DRAFT">Borrador</option>
-                    <option value="ORDERED">Ordenado</option>
-                  </select>
+                  />
                 </label>
-              </div>
-
-              <label>
-                <span>Notas</span>
-                <textarea
-                  rows={3}
-                  value={formState.notes}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      notes: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-
-              <div className="budget-items">
-                <div className="budget-items__header">
-                  <h4>Items de compra</h4>
-                  <button
-                    type="button"
-                    className="btn btn-tertiary"
-                    onClick={appendItem}
-                  >
-                    + Agregar item
-                  </button>
+                <label>
+                  <span>Costo unitario</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={item.unitCost}
+                    onChange={(event) =>
+                      updateItem(
+                        index,
+                        "unitCost",
+                        Number(event.target.value),
+                      )
+                    }
+                  />
+                </label>
+                <div className="budget-item-row__total">
+                  <span>Total</span>
+                  <strong>
+                    {formatMoney(itemTotal(item), formState.currency)}
+                  </strong>
                 </div>
-
-                {formState.items.map((item, index) => (
-                  <div
-                    key={`${index}-${item.materialId}`}
-                    className="budget-item-row"
-                  >
-                    <label>
-                      <span>Material ID</span>
-                      <input
-                        type="text"
-                        value={item.materialId}
-                        onChange={(event) =>
-                          updateItem(index, "materialId", event.target.value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>Cantidad</span>
-                      <input
-                        type="number"
-                        min={0.0001}
-                        step="0.0001"
-                        value={item.quantityOrdered}
-                        onChange={(event) =>
-                          updateItem(
-                            index,
-                            "quantityOrdered",
-                            Number(event.target.value),
-                          )
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>Costo unitario</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={item.unitCost}
-                        onChange={(event) =>
-                          updateItem(
-                            index,
-                            "unitCost",
-                            Number(event.target.value),
-                          )
-                        }
-                      />
-                    </label>
-                    <div className="budget-item-row__total">
-                      <span>Total</span>
-                      <strong>
-                        {formatMoney(itemTotal(item), formState.currency)}
-                      </strong>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => removeItem(index)}
-                      disabled={formState.items.length === 1}
-                    >
-                      Quitar
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <div className="budget-summary">
-                <span>Total estimado</span>
-                <strong>
-                  {formatMoney(formTotal(formState.items), formState.currency)}
-                </strong>
-              </div>
-
-              {formError && <p className="form-error">{formError}</p>}
-
-              <div className="clients-form-actions">
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={isSaving}
-                >
-                  {isSaving ? "Guardando..." : "Crear compra"}
-                </button>
                 <button
                   type="button"
-                  className="btn btn-secondary"
-                  onClick={clearForm}
+                  className="btn btn-ghost"
+                  onClick={() => removeItem(index)}
+                  disabled={formState.items.length === 1}
                 >
-                  Reiniciar
+                  Quitar
                 </button>
               </div>
-            </form>
-          </article>
-        </div>
-      </div>
+            ))}
+          </div>
+
+          <div className="budget-summary">
+            <span>Total estimado</span>
+            <strong>
+              {formatMoney(formTotal(formState.items), formState.currency)}
+            </strong>
+          </div>
+
+          {formError && <p className="form-error">{formError}</p>}
+
+          <div className="clients-form-actions">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={isSaving}
+            >
+              {isSaving ? "Guardando..." : "Crear compra"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setFormState(emptyFormState);
+                setFormError(null);
+              }}
+            >
+              Reiniciar
+            </button>
+          </div>
+        </form>
+      </FormPopup>
     </section>
   );
 }

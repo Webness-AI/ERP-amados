@@ -8,10 +8,19 @@ import {
   buildPaginatedResponse,
   parsePaginationInput,
 } from "../../core/utils/pagination";
+import {
+  normalizeOptionalString,
+  roundMoney,
+  toDateOrNull,
+} from "../../core/utils/formatting";
 import { ClientModel } from "../clients/client.model";
 import { COLLECTION_STATUSES, CollectionModel } from "../collections/collection.model";
-import { calculateFixedCostPerHour } from "../fixed-expenses/fixed-expense.service";
 import { PROJECT_STATUSES, ProjectModel } from "../projects/project.model";
+import { ProjectMaterialRequirementModel } from "../stock/project-material-requirement.model";
+import {
+  STOCK_MOVEMENT_TYPES,
+  StockMovementModel,
+} from "../stock/stock-movement.model";
 import {
   BUDGET_PRICING_AUDIT_REASONS,
   createBudgetPricingAudit,
@@ -47,7 +56,12 @@ type BudgetPricingInput = {
   items: BudgetItemInput[];
   materials: BudgetMaterialInput[];
   laborHours: number;
+  laborCost: number;
+  hourlyRate: number;
+  sellerCommission: number;
+  employeeBonus: number;
   shippingCost: number;
+  packagingCost: number;
   marginType: BudgetMarginType;
   enableCommercialPricing: boolean;
 };
@@ -66,11 +80,19 @@ type BudgetPricingResult = {
   bonusPercent: number;
   bonusAmount: number;
   shippingCost: number;
+  packagingCost: number;
   projectCost: number;
   marginType: BudgetMarginType;
   marginPercent: number;
   marginAmount: number;
   finalPrice: number;
+};
+
+type StockReservationWarning = {
+  materialId: string;
+  requiredQuantity: number;
+  reservedQuantity: number;
+  missingQuantity: number;
 };
 
 export type AcceptBudgetResult = {
@@ -79,6 +101,7 @@ export type AcceptBudgetResult = {
   projectId: string;
   collectionId: string;
   createdClient: boolean;
+  stockAlerts: StockReservationWarning[];
 };
 
 export type BudgetDetail = Budget & {
@@ -90,41 +113,111 @@ type AcceptBudgetOptions = {
   acceptanceEventName?: DomainEventName;
 };
 
-function roundMoney(value: number): number {
-  return Number(value.toFixed(2));
+function calculateCollectionDueDateFromNow(): Date {
+  return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 }
 
-function normalizeOptionalString(value?: string): string | null {
-  if (!value) {
-    return null;
+function resolveNormalizedBudgetAmount(budget: Budget): number {
+  if (budget.total > 0) {
+    return roundMoney(budget.total);
   }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
+
+  if (budget.finalPrice > 0) {
+    return roundMoney(budget.finalPrice);
+  }
+
+  if (budget.subtotal > 0) {
+    return roundMoney(budget.subtotal);
+  }
+
+  const itemsTotal = roundMoney(
+    budget.items.reduce((acc, item) => acc + (item.total ?? 0), 0),
+  );
+  return itemsTotal;
 }
 
-function toDateOrNull(value?: string): Date | null {
-  if (!value) {
-    return null;
+function isTransactionUnsupportedError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
   }
-  return new Date(value);
+
+  return error.message.includes(
+    "Transaction numbers are only allowed on a replica set member or mongos",
+  );
 }
 
 function calculateItemTotals(items: BudgetItemInput[]): BudgetItem[] {
   return items.map((item) => ({
     description: item.description,
     quantity: item.quantity,
-    unitPrice: item.unitPrice,
-    total: roundMoney(item.quantity * item.unitPrice),
+    unitPrice: item.unitPrice ?? 0,
+    total: roundMoney(item.quantity * (item.unitPrice ?? 0)),
   }));
 }
 
-function calculateMaterialTotals(materials: BudgetMaterialInput[]): BudgetMaterial[] {
-  return materials.map((material) => ({
-    materialId: new mongoose.Types.ObjectId(material.materialId),
-    quantity: material.quantity,
-    unitPrice: material.unitPrice,
-    total: roundMoney(material.quantity * material.unitPrice),
+function calculateItemsFromBudgetUnitPrice(
+  items: BudgetItemInput[],
+  unitPrice: number,
+): BudgetItem[] {
+  return items.map((item) => ({
+    description: item.description,
+    quantity: item.quantity,
+    unitPrice,
+    total: roundMoney(item.quantity * unitPrice),
   }));
+}
+
+function calculateItemsMultiplier(items: BudgetItemInput[]): number {
+  const multiplier = items.reduce((acc, item) => acc + item.quantity, 0);
+  return multiplier > 0 ? multiplier : 1;
+}
+
+async function calculateMaterialTotals(
+  materials: BudgetMaterialInput[],
+): Promise<BudgetMaterial[]> {
+  if (materials.length === 0) {
+    return [];
+  }
+
+  const materialIds = Array.from(
+    new Set(materials.map((material) => material.materialId)),
+  );
+  const invalidMaterialId = materialIds.find(
+    (materialId) => !mongoose.Types.ObjectId.isValid(materialId),
+  );
+
+  if (invalidMaterialId) {
+    throw new AppError("Invalid material id", 400, "INVALID_MATERIAL_ID");
+  }
+
+  const materialPrices = await MaterialModel.find({
+    _id: { $in: materialIds },
+    deletedAt: null,
+  })
+    .select("_id unitPrice")
+    .lean();
+
+  const unitPriceByMaterialId = new Map(
+    materialPrices.map((material) => [
+      String(material._id),
+      material.unitPrice ?? 0,
+    ]),
+  );
+
+  return materials.map((material) => {
+    const unitPrice = unitPriceByMaterialId.get(material.materialId);
+
+    if (unitPrice === undefined) {
+      throw new AppError("Material not found", 404, "MATERIAL_NOT_FOUND");
+    }
+
+    return {
+      materialId: new mongoose.Types.ObjectId(material.materialId),
+      quantity: material.quantity,
+      unitPrice,
+      total: roundMoney(material.quantity * unitPrice),
+    };
+  });
 }
 
 function calculateMarginPercent(marginType: BudgetMarginType): number {
@@ -134,11 +227,77 @@ function calculateMarginPercent(marginType: BudgetMarginType): number {
   return 40;
 }
 
+async function getCurrentStockForMaterial(
+  materialId: string,
+  session?: mongoose.ClientSession,
+): Promise<number> {
+  const aggregate = StockMovementModel.aggregate<{ total: number }>([
+    {
+      $match: {
+        materialId: new mongoose.Types.ObjectId(materialId),
+        deletedAt: null,
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        ingreso: {
+          $sum: {
+            $cond: [{ $eq: ["$type", STOCK_MOVEMENT_TYPES.INGRESO] }, "$quantity", 0],
+          },
+        },
+        devolucion: {
+          $sum: {
+            $cond: [
+              { $eq: ["$type", STOCK_MOVEMENT_TYPES.DEVOLUCION] },
+              "$quantity",
+              0,
+            ],
+          },
+        },
+        ajuste: {
+          $sum: {
+            $cond: [{ $eq: ["$type", STOCK_MOVEMENT_TYPES.AJUSTE] }, "$quantity", 0],
+          },
+        },
+        reserva: {
+          $sum: {
+            $cond: [{ $eq: ["$type", STOCK_MOVEMENT_TYPES.RESERVA] }, "$quantity", 0],
+          },
+        },
+        consumo: {
+          $sum: {
+            $cond: [{ $eq: ["$type", STOCK_MOVEMENT_TYPES.CONSUMO] }, "$quantity", 0],
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        total: {
+          $subtract: [
+            { $add: ["$ingreso", "$devolucion", "$ajuste"] },
+            { $add: ["$reserva", "$consumo"] },
+          ],
+        },
+      },
+    },
+  ]);
+
+  if (session) {
+    aggregate.session(session);
+  }
+
+  const totals = await aggregate;
+  return Number((totals[0]?.total ?? 0).toFixed(4));
+}
+
 async function calculateBudgetPricing(
   input: BudgetPricingInput,
 ): Promise<BudgetPricingResult> {
   const items = calculateItemTotals(input.items);
-  const materials = calculateMaterialTotals(input.materials);
+  const materials = await calculateMaterialTotals(input.materials);
 
   const itemsCost = roundMoney(items.reduce((acc, item) => acc + item.total, 0));
   const materialsCost =
@@ -161,6 +320,7 @@ async function calculateBudgetPricing(
       bonusPercent: 0,
       bonusAmount: 0,
       shippingCost: 0,
+      packagingCost: 0,
       projectCost: materialsCost,
       marginType: input.marginType,
       marginPercent: 0,
@@ -169,36 +329,48 @@ async function calculateBudgetPricing(
     };
   }
 
-  const laborCostPerHour = await calculateFixedCostPerHour();
   const laborHours = roundMoney(input.laborHours);
+  const laborCostPerHour = roundMoney(input.hourlyRate);
+
   if (laborHours > 0 && laborCostPerHour <= 0) {
     throw new AppError(
-      "Labor hours require active fixed expenses",
+      "Labor hours require a valid hourly rate",
       400,
-      "LABOR_COST_BASE_REQUIRED",
+      "HOURLY_RATE_REQUIRED",
     );
   }
   const laborCost = roundMoney(laborHours * laborCostPerHour);
 
-  const baseCost = roundMoney(materialsCost + laborCost);
-  const commissionPercent = 13;
-  const bonusPercent = 10;
-  const commissionAmount = roundMoney((baseCost * commissionPercent) / 100);
-  const bonusAmount = roundMoney((baseCost * bonusPercent) / 100);
   const shippingCost = roundMoney(input.shippingCost);
+  const packagingCost = roundMoney(input.packagingCost);
+  const subtotalCosts = roundMoney(
+    materialsCost + laborCost + shippingCost + packagingCost,
+  );
+  const commissionPercent =
+    input.sellerCommission > 0 ? roundMoney(input.sellerCommission) : 13;
+  const bonusPercent =
+    input.employeeBonus > 0 ? roundMoney(input.employeeBonus) : 10;
+  const commissionAmount = roundMoney((subtotalCosts * commissionPercent) / 100);
+  const bonusAmount = roundMoney((subtotalCosts * bonusPercent) / 100);
 
   const projectCost = roundMoney(
-    baseCost + commissionAmount + bonusAmount + shippingCost,
+    subtotalCosts + commissionAmount + bonusAmount,
   );
 
   const marginPercent = calculateMarginPercent(input.marginType);
   const marginAmount = roundMoney((projectCost * marginPercent) / 100);
-  const finalPrice = roundMoney(projectCost + marginAmount);
+  const unitFinalPrice = roundMoney(projectCost + marginAmount);
+  const itemsMultiplier = calculateItemsMultiplier(input.items);
+  const pricedItems = calculateItemsFromBudgetUnitPrice(
+    input.items,
+    unitFinalPrice,
+  );
+  const finalPrice = roundMoney(unitFinalPrice * itemsMultiplier);
 
   return {
-    items,
+    items: pricedItems,
     materials,
-    subtotal: roundMoney(materialsCost + laborCost),
+    subtotal: subtotalCosts,
     total: finalPrice,
     materialsCost,
     laborHours,
@@ -209,6 +381,7 @@ async function calculateBudgetPricing(
     bonusPercent,
     bonusAmount,
     shippingCost,
+    packagingCost,
     projectCost,
     marginType: input.marginType,
     marginPercent,
@@ -233,7 +406,12 @@ function shouldEnableCommercialPricing(input: {
   enableCommercialPricing?: boolean | undefined;
   materials?: BudgetMaterialInput[] | undefined;
   laborHours?: number | undefined;
+  laborCost?: number | undefined;
+  hourlyRate?: number | undefined;
+  sellerCommission?: number | undefined;
+  employeeBonus?: number | undefined;
   shippingCost?: number | undefined;
+  packagingCost?: number | undefined;
 }): boolean {
   if (input.enableCommercialPricing === true) {
     return true;
@@ -247,7 +425,27 @@ function shouldEnableCommercialPricing(input: {
     return true;
   }
 
-  return (input.shippingCost ?? 0) > 0;
+  if ((input.laborCost ?? 0) > 0) {
+    return true;
+  }
+
+  if ((input.hourlyRate ?? 0) > 0) {
+    return true;
+  }
+
+  if ((input.sellerCommission ?? 0) > 0) {
+    return true;
+  }
+
+  if ((input.employeeBonus ?? 0) > 0) {
+    return true;
+  }
+
+  if ((input.shippingCost ?? 0) > 0) {
+    return true;
+  }
+
+  return (input.packagingCost ?? 0) > 0;
 }
 
 function normalizeMarginType(value?: BudgetMarginType): BudgetMarginType {
@@ -275,7 +473,12 @@ export async function createBudget(
     items: input.items,
     materials: input.materials ?? [],
     laborHours: input.laborHours ?? 0,
+    laborCost: input.laborCost ?? 0,
+    hourlyRate: input.hourlyRate ?? 0,
+    sellerCommission: input.sellerCommission ?? 0,
+    employeeBonus: input.employeeBonus ?? 0,
     shippingCost: input.shippingCost ?? 0,
+    packagingCost: input.packagingCost ?? 0,
     marginType: normalizeMarginType(input.marginType),
     enableCommercialPricing,
   });
@@ -300,6 +503,7 @@ export async function createBudget(
     bonusPercent: pricing.bonusPercent,
     bonusAmount: pricing.bonusAmount,
     shippingCost: pricing.shippingCost,
+    packagingCost: pricing.packagingCost,
     projectCost: pricing.projectCost,
     marginType: pricing.marginType,
     marginPercent: pricing.marginPercent,
@@ -380,14 +584,24 @@ export async function reviseBudget(
       : {}),
     materials: sourceMaterials,
     laborHours: input.laborHours ?? baseBudget.laborHours,
+    laborCost: input.laborCost ?? baseBudget.laborCost,
+    hourlyRate: input.hourlyRate ?? baseBudget.laborCostPerHour,
+    sellerCommission: input.sellerCommission ?? baseBudget.commissionPercent,
+    employeeBonus: input.employeeBonus ?? baseBudget.bonusPercent,
     shippingCost: input.shippingCost ?? baseBudget.shippingCost,
+    packagingCost: input.packagingCost ?? baseBudget.packagingCost,
   });
 
   const pricing = await calculateBudgetPricing({
     items: sourceItems,
     materials: sourceMaterials,
     laborHours: input.laborHours ?? baseBudget.laborHours,
+    laborCost: input.laborCost ?? baseBudget.laborCost,
+    hourlyRate: input.hourlyRate ?? baseBudget.laborCostPerHour,
+    sellerCommission: input.sellerCommission ?? baseBudget.commissionPercent,
+    employeeBonus: input.employeeBonus ?? baseBudget.bonusPercent,
     shippingCost: input.shippingCost ?? baseBudget.shippingCost,
+    packagingCost: input.packagingCost ?? baseBudget.packagingCost,
     marginType: normalizeMarginType(input.marginType ?? baseBudget.marginType),
     enableCommercialPricing,
   });
@@ -430,6 +644,7 @@ export async function reviseBudget(
     bonusPercent: pricing.bonusPercent,
     bonusAmount: pricing.bonusAmount,
     shippingCost: pricing.shippingCost,
+    packagingCost: pricing.packagingCost,
     projectCost: pricing.projectCost,
     marginType: pricing.marginType,
     marginPercent: pricing.marginPercent,
@@ -536,7 +751,12 @@ export async function recalculateBudgetPricing(
       unitPrice: material.unitPrice,
     })),
     laborHours: budget.laborHours,
+    laborCost: budget.laborCost,
+    hourlyRate: budget.laborCostPerHour,
+    sellerCommission: budget.commissionPercent,
+    employeeBonus: budget.bonusPercent,
     shippingCost: budget.shippingCost,
+    packagingCost: budget.packagingCost,
     marginType: budget.marginType,
     enableCommercialPricing: shouldEnableCommercialPricing({
       materials: budget.materials.map((material) => ({
@@ -545,7 +765,12 @@ export async function recalculateBudgetPricing(
         unitPrice: material.unitPrice,
       })),
       laborHours: budget.laborHours,
+      laborCost: budget.laborCost,
+      hourlyRate: budget.laborCostPerHour,
+      sellerCommission: budget.commissionPercent,
+      employeeBonus: budget.bonusPercent,
       shippingCost: budget.shippingCost,
+      packagingCost: budget.packagingCost,
       enableCommercialPricing:
         budget.commissionPercent > 0 ||
         budget.bonusPercent > 0 ||
@@ -567,6 +792,7 @@ export async function recalculateBudgetPricing(
       bonusPercent: pricing.bonusPercent,
       bonusAmount: pricing.bonusAmount,
       shippingCost: pricing.shippingCost,
+      packagingCost: pricing.packagingCost,
       projectCost: pricing.projectCost,
       marginType: pricing.marginType,
       marginPercent: pricing.marginPercent,
@@ -662,7 +888,12 @@ export async function applyBudgetRecalculation(
       unitPrice: material.unitPrice,
     })),
     laborHours: budget.laborHours,
+    laborCost: budget.laborCost,
+    hourlyRate: budget.laborCostPerHour,
+    sellerCommission: budget.commissionPercent,
+    employeeBonus: budget.bonusPercent,
     shippingCost: budget.shippingCost,
+    packagingCost: budget.packagingCost,
     marginType: budget.marginType,
     enableCommercialPricing: shouldEnableCommercialPricing({
       materials: budget.materials.map((material) => ({
@@ -671,7 +902,12 @@ export async function applyBudgetRecalculation(
         unitPrice: material.unitPrice,
       })),
       laborHours: budget.laborHours,
+      laborCost: budget.laborCost,
+      hourlyRate: budget.laborCostPerHour,
+      sellerCommission: budget.commissionPercent,
+      employeeBonus: budget.bonusPercent,
       shippingCost: budget.shippingCost,
+      packagingCost: budget.packagingCost,
       enableCommercialPricing:
         budget.commissionPercent > 0 ||
         budget.bonusPercent > 0 ||
@@ -702,6 +938,7 @@ export async function applyBudgetRecalculation(
       bonusPercent: pricing.bonusPercent,
       bonusAmount: pricing.bonusAmount,
       shippingCost: pricing.shippingCost,
+      packagingCost: pricing.packagingCost,
       projectCost: pricing.projectCost,
       marginType: pricing.marginType,
       marginPercent: pricing.marginPercent,
@@ -724,6 +961,7 @@ export async function applyBudgetRecalculation(
   budget.bonusPercent = pricing.bonusPercent;
   budget.bonusAmount = pricing.bonusAmount;
   budget.shippingCost = pricing.shippingCost;
+  budget.packagingCost = pricing.packagingCost;
   budget.projectCost = pricing.projectCost;
   budget.marginType = pricing.marginType;
   budget.marginPercent = pricing.marginPercent;
@@ -782,6 +1020,9 @@ export async function listBudgets(query: ListBudgetsInput): Promise<{
       { prospectName: regex },
       { prospectEmail: regex },
       { prospectPhone: regex },
+      { prospectLocalidad: regex },
+      { prospectContacto: regex },
+      { prospectDireccion: regex },
     ];
   }
 
@@ -899,8 +1140,10 @@ export async function acceptBudgetAndCreateProject(
     let acceptedProjectId: string | null = null;
     let acceptedCollectionId: string | null = null;
     let createdClient = false;
+    const stockAlerts: StockReservationWarning[] = [];
 
-    await session.withTransaction(async () => {
+    try {
+      await session.withTransaction(async () => {
       const budget = await BudgetModel.findOne({
         _id: budgetId,
         deletedAt: null,
@@ -944,8 +1187,34 @@ export async function acceptBudgetAndCreateProject(
         );
       }
 
+      const linkedBudgetInVersionGroup = await BudgetModel.findOne({
+        _id: { $ne: budget._id },
+        versionGroupId: budget.versionGroupId,
+        projectId: { $ne: null },
+        deletedAt: null,
+      })
+        .select("_id projectId")
+        .session(session)
+        .lean();
+
+      if (linkedBudgetInVersionGroup?.projectId) {
+        throw new AppError(
+          "Budget version group already linked to a project",
+          409,
+          "BUDGET_VERSION_GROUP_ALREADY_LINKED",
+        );
+      }
+
       let clientObjectId = budget.clientId ?? null;
       let clientId = clientObjectId ? String(clientObjectId) : null;
+      const fallbackContact =
+        normalizeOptionalString(input.contactName) ??
+        normalizeOptionalString(budget.prospectContacto) ??
+        normalizeOptionalString(budget.prospectContactName);
+      const fallbackPhone =
+        normalizeOptionalString(input.phone) ??
+        normalizeOptionalString(budget.prospectPhone) ??
+        fallbackContact;
 
       if (clientId) {
         const existingClient = await ClientModel.findOne({
@@ -957,32 +1226,58 @@ export async function acceptBudgetAndCreateProject(
         if (!existingClient) {
           throw new AppError("Client not found", 404, "CLIENT_NOT_FOUND");
         }
+
+        existingClient.contactName =
+          existingClient.contactName ?? fallbackContact ?? null;
+        existingClient.localidad =
+          existingClient.localidad ??
+          normalizeOptionalString(budget.prospectLocalidad) ??
+          null;
+        existingClient.contacto =
+          existingClient.contacto ?? fallbackContact ??
+          null;
+        existingClient.phone = existingClient.phone ?? fallbackPhone ?? null;
+        existingClient.direccion =
+          existingClient.direccion ??
+          normalizeOptionalString(budget.prospectDireccion) ??
+          null;
+        existingClient.updatedBy = actor.id;
+        await existingClient.save({ session });
       } else {
         const name =
           normalizeOptionalString(input.clientName) ??
-          budget.prospectName ??
-          budget.title;
+          normalizeOptionalString(budget.prospectName) ??
+          normalizeOptionalString(budget.title);
+
+        if (!name) {
+          throw new AppError(
+            "Budget does not provide a valid client name",
+            422,
+            "CLIENT_NAME_REQUIRED",
+          );
+        }
 
         const clientDocs = await ClientModel.create(
           [
             {
               name,
               contactName:
-                normalizeOptionalString(input.contactName) ??
-                budget.prospectContactName ??
+                fallbackContact ??
                 null,
               email:
                 normalizeOptionalString(input.email) ??
-                budget.prospectEmail ??
+                normalizeOptionalString(budget.prospectEmail) ??
                 null,
               phone:
-                normalizeOptionalString(input.phone) ??
-                budget.prospectPhone ??
+                fallbackPhone ??
                 null,
               notes:
                 normalizeOptionalString(input.notes) ??
-                budget.prospectNotes ??
+                normalizeOptionalString(budget.prospectNotes) ??
                 null,
+              localidad: normalizeOptionalString(budget.prospectLocalidad),
+              contacto: fallbackContact,
+              direccion: normalizeOptionalString(budget.prospectDireccion),
               isActive: true,
               createdBy: actor.id,
               updatedBy: actor.id,
@@ -1014,10 +1309,13 @@ export async function acceptBudgetAndCreateProject(
             name: normalizeOptionalString(input.projectName) ?? budget.title,
             description:
               normalizeOptionalString(input.projectDescription) ??
-              budget.description ??
+              normalizeOptionalString(budget.description) ??
               null,
             status: PROJECT_STATUSES.APROBADO,
             deliveryDate: toDateOrNull(input.projectDeliveryDate),
+            localidad: normalizeOptionalString(budget.prospectLocalidad),
+            contacto: normalizeOptionalString(budget.prospectContacto),
+            direccion: normalizeOptionalString(budget.prospectDireccion),
             isActive: true,
             createdBy: actor.id,
             updatedBy: actor.id,
@@ -1030,11 +1328,133 @@ export async function acceptBudgetAndCreateProject(
         throw new AppError("Unable to create project", 500, "PROJECT_CREATE_FAILED");
       }
 
+      const aggregatedMaterials = new Map<string, number>();
+      for (const material of budget.materials ?? []) {
+        const materialId = String(material.materialId);
+        const current = aggregatedMaterials.get(materialId) ?? 0;
+        aggregatedMaterials.set(
+          materialId,
+          Number((current + material.quantity).toFixed(4)),
+        );
+      }
+
+      for (const [materialId, requiredQuantity] of aggregatedMaterials.entries()) {
+        if (requiredQuantity <= 0) {
+          continue;
+        }
+
+        const requirementDocs = await ProjectMaterialRequirementModel.create(
+          [
+            {
+              projectId: projectDoc._id,
+              materialId: new mongoose.Types.ObjectId(materialId),
+              requiredQuantity,
+              reservedQuantity: 0,
+              consumedQuantity: 0,
+              createdBy: actor.id,
+              updatedBy: actor.id,
+            },
+          ],
+          { session },
+        );
+
+        const requirement = requirementDocs[0];
+        if (!requirement) {
+          throw new AppError(
+            "Unable to create project material requirement",
+            500,
+            "PROJECT_MATERIAL_REQUIREMENT_CREATE_FAILED",
+          );
+        }
+
+        const currentStock = await getCurrentStockForMaterial(materialId, session);
+        const reservedQuantity = Number(
+          Math.min(currentStock, requiredQuantity).toFixed(4),
+        );
+        const missingQuantity = Number(
+          (requiredQuantity - reservedQuantity).toFixed(4),
+        );
+
+        if (reservedQuantity > 0) {
+          const movementDocs = await StockMovementModel.create(
+            [
+              {
+                materialId: new mongoose.Types.ObjectId(materialId),
+                projectId: projectDoc._id,
+                type: STOCK_MOVEMENT_TYPES.RESERVA,
+                quantity: reservedQuantity,
+                unitCost: null,
+                note: `Reserva automática desde presupuesto ${budget.id}`,
+                createdBy: actor.id,
+                updatedBy: actor.id,
+              },
+            ],
+            { session },
+          );
+
+          const movement = movementDocs[0];
+
+          requirement.reservedQuantity = reservedQuantity;
+          requirement.updatedBy = actor.id;
+          await requirement.save({ session });
+
+          eventBus.publish({
+            name: DOMAIN_EVENTS.MATERIAL_RESERVADO,
+            payload: {
+              materialId,
+              projectId: projectDoc.id,
+              quantity: reservedQuantity,
+            },
+            occurredAt: new Date().toISOString(),
+            actorId: actor.id,
+            correlationId: movement?.id ?? budget.id,
+          });
+
+          eventBus.publish({
+            name: DOMAIN_EVENTS.MATERIAL_ASIGNADO_A_PROYECTO,
+            payload: {
+              materialId,
+              projectId: projectDoc.id,
+              requirementId: requirement.id,
+              quantity: reservedQuantity,
+            },
+            occurredAt: new Date().toISOString(),
+            actorId: actor.id,
+            correlationId: requirement.id,
+          });
+        }
+
+        if (missingQuantity > 0) {
+          stockAlerts.push({
+            materialId,
+            requiredQuantity,
+            reservedQuantity,
+            missingQuantity,
+          });
+
+          eventBus.publish({
+            name: DOMAIN_EVENTS.STOCK_BAJO_DETECTADO,
+            payload: {
+              materialId,
+              projectId: projectDoc.id,
+              requiredQuantity,
+              reservedQuantity,
+              missingQuantity,
+            },
+            occurredAt: new Date().toISOString(),
+            actorId: actor.id,
+            correlationId: requirement.id,
+          });
+        }
+      }
+
+      const normalizedBudgetAmount = resolveNormalizedBudgetAmount(budget);
       const effectiveTotal = roundMoney(
         requireDiscount
-          ? (budget.discountedTotal ?? 0)
-          : (budget.discountedTotal ?? budget.total),
+          ? (budget.discountedTotal ?? normalizedBudgetAmount)
+          : normalizedBudgetAmount,
       );
+
       const [collectionDoc] = await CollectionModel.create(
         [
           {
@@ -1046,7 +1466,7 @@ export async function acceptBudgetAndCreateProject(
             pendingAmount: effectiveTotal,
             laborAmountPending: roundMoney(budget.laborCost ?? 0),
             currency: budget.currency,
-            dueDate: toDateOrNull(input.collectionDueDate),
+            dueDate: calculateCollectionDueDateFromNow(),
             notes: normalizeOptionalString(input.collectionNotes),
             payments: [],
             createdBy: actor.id,
@@ -1065,6 +1485,9 @@ export async function acceptBudgetAndCreateProject(
       }
 
       budget.projectId = projectDoc._id;
+      budget.subtotal = normalizedBudgetAmount;
+      budget.total = normalizedBudgetAmount;
+      budget.finalPrice = normalizedBudgetAmount;
       budget.status = BUDGET_STATUSES.APPROVED;
       budget.approvedAt = new Date();
       budget.updatedBy = actor.id;
@@ -1075,7 +1498,18 @@ export async function acceptBudgetAndCreateProject(
       acceptedClientId = clientId;
       acceptedProjectId = projectDoc.id;
       acceptedCollectionId = collectionDoc.id;
-    });
+      });
+    } catch (error: unknown) {
+      if (isTransactionUnsupportedError(error)) {
+        throw new AppError(
+          "MongoDB no soporta transacciones en esta instancia. Configura replica set (incluido single-node) o usa una instancia compatible.",
+          500,
+          "MONGO_TRANSACTIONS_UNAVAILABLE",
+        );
+      }
+
+      throw error;
+    }
 
     if (
       !acceptedBudgetId ||
@@ -1114,6 +1548,7 @@ export async function acceptBudgetAndCreateProject(
         collectionId: acceptedCollectionId,
         total: acceptedTotal,
         createdClient,
+        stockAlerts,
       },
       occurredAt: new Date().toISOString(),
       actorId: actor.id,
@@ -1139,6 +1574,7 @@ export async function acceptBudgetAndCreateProject(
       projectId: acceptedProjectId,
       collectionId: acceptedCollectionId,
       createdClient,
+      stockAlerts,
     };
   } finally {
     await session.endSession();

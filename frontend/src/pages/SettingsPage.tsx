@@ -22,6 +22,7 @@ import {
   type UserRecord,
 } from "../services/erp-api";
 import { useAuth } from "../auth/useAuth";
+import { formatDate } from "../utils/formatters";
 
 const PAGE_SIZE = 12;
 
@@ -70,19 +71,6 @@ const resultClassificationOptions: ResultClassification[] = [
   "GASTOS_ADMIN_COMERCIAL",
   "GENERAL",
 ];
-
-function formatDate(value?: string | null): string {
-  if (!value) {
-    return "Sin fecha";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Sin fecha";
-  }
-
-  return date.toLocaleDateString("es-AR");
-}
 
 export function SettingsPage() {
   const { user: currentUser, logout } = useAuth();

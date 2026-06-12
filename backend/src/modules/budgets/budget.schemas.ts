@@ -5,13 +5,13 @@ import { BUDGET_MARGIN_TYPES, BUDGET_STATUSES } from "./budget.model";
 const budgetItemSchema = z.object({
   description: z.string().trim().min(1).max(240),
   quantity: z.number().positive(),
-  unitPrice: z.number().min(0),
+  unitPrice: z.number().min(0).optional(),
 });
 
 const budgetMaterialSchema = z.object({
   materialId: z.string().min(1),
   quantity: z.number().positive(),
-  unitPrice: z.number().min(0),
+  unitPrice: z.number().min(0).optional(),
 });
 
 export const createBudgetSchema = z.object({
@@ -21,13 +21,21 @@ export const createBudgetSchema = z.object({
   prospectEmail: z.string().trim().email().max(120).optional(),
   prospectPhone: z.string().trim().max(40).optional(),
   prospectNotes: z.string().trim().max(1000).optional(),
+  prospectLocalidad: z.string().trim().max(180).optional(),
+  prospectContacto: z.string().trim().max(140).optional(),
+  prospectDireccion: z.string().trim().max(500).optional(),
   title: z.string().trim().min(2).max(180),
   description: z.string().trim().max(2000).optional(),
   currency: z.string().trim().min(1).max(10).default("ARS"),
-  items: z.array(budgetItemSchema).min(1),
+  items: z.array(budgetItemSchema).default([]),
   materials: z.array(budgetMaterialSchema).default([]),
   laborHours: z.number().min(0).default(0),
+  laborCost: z.number().min(0).default(0),
+  hourlyRate: z.number().min(0).default(0),
+  sellerCommission: z.number().min(0).default(0),
+  employeeBonus: z.number().min(0).default(0),
   shippingCost: z.number().min(0).default(0),
+  packagingCost: z.number().min(0).default(0),
   marginType: z
     .enum([BUDGET_MARGIN_TYPES.COMUN_40, BUDGET_MARGIN_TYPES.COCINA_55])
     .default(BUDGET_MARGIN_TYPES.COMUN_40),
